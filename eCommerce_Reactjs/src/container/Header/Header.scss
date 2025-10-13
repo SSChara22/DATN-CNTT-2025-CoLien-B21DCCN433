@@ -1,0 +1,92 @@
+.main_menu{
+    transition: width 2s, top 4s;
+    
+    // Logo resizing styles
+    .navbar-brand.logo_h {
+        img {
+            max-height: 60px; // Adjust this value to resize the logo
+            width: auto;
+            object-fit: contain;
+        }
+    }
+    
+    &.sticky{
+        position: fixed;
+        width: 100%;
+        top: -70px;
+        transform: translateY(70px);
+        transition: transform 500ms ease;
+        left: 0;
+        box-shadow: 0px 3px 16px 0px rgba(0,0,0, 0.1);
+        
+        // Smaller logo when header is sticky
+        .navbar-brand.logo_h {
+            img {
+                max-height: 45px; // Smaller logo when sticky
+            }
+        }
+    }
+
+
+    .box-quantity-cart{
+        border-radius: 50%;
+        width: 15px;
+        height: 15px;
+        background-color: #ee4266;
+        color: #fff;
+        line-height: 15px;
+        text-align: center;
+        display: block;
+        position: absolute;
+        top: 25px;
+        right: 29px;
+        font-size: 12px;
+    }
+    .box-message-quantity{
+        border-radius: 50%;
+        width: 20px;
+        height: 15px;
+        background-color: #ee4266;
+        color: #fff;
+        line-height: 15px;
+        text-align: center;
+        display: block;
+        position: absolute;
+        top: 25px;
+        right: 65px;
+        font-size: 12px;
+    }
+    
+    // Responsive logo sizing
+    @media (max-width: 768px) {
+        .navbar-brand.logo_h {
+            img {
+                max-height: 50px; // Smaller logo on mobile
+            }
+        }
+        
+        &.sticky {
+            .navbar-brand.logo_h {
+                img {
+                    max-height: 40px; // Even smaller on mobile when sticky
+                }
+            }
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .navbar-brand.logo_h {
+            img {
+                max-height: 45px; // Very small logo on small mobile screens
+            }
+        }
+        
+        &.sticky {
+            .navbar-brand.logo_h {
+                img {
+                    max-height: 35px; // Very small on mobile when sticky
+                }
+            }
+        }
+    }
+} 

@@ -1,0 +1,21 @@
+.main_btn {
+    background-color: #ff7a00 !important;  // Cam tươi
+    color: #ffffff !important;             // Chữ trắng
+    border: none;
+    padding: 12px 30px;
+    border-radius: 4px;
+    display: inline-block;
+    text-decoration: none;
+    font-weight: 600;
+    transition: 0.3s ease;
+}
+
+.main_btn:hover {
+    background-color: #e86a00 !important;  // Cam đậm hơn khi hover
+    color: #ffffff !important;
+}
+h3 span {
+    color: #ff7a00 !important;
+    font-weight: 700;
+    text-shadow: 0px 2px 4px rgba(0,0,0,0.15);
+}
