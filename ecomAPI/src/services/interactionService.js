@@ -1,0 +1,55 @@
+import { Interaction, Allcode, Product, User } from '../models/index.js';
+
+export async function logInteraction(userId, productId, actionCode, device) {
+    // Kiểm tra actionCode có tồn tại trong Allcode
+    const action = await Allcode.findOne({ where: { type: 'ACTION', code: actionCode } });
+    if (!action) throw new Error(`Action code "${actionCode}" không tồn tại`);
+
+    // Tạo bản ghi mới
+    const record = await Interaction.create({
+        userId,
+        productId,
+        actionCode: action.code,
+        device_type: device,
+        timestamp: new Date()
+    });
+
+    return record;
+}
+
+export async function getUserInteractions(userId, filterActionCode = null) {
+    const whereClause = { userId };
+    if (filterActionCode) whereClause.actionCode = filterActionCode;
+
+    const interactions = await Interaction.findAll({
+        where: whereClause,
+        include: [
+            { model: Product, as: 'productData' },
+            { model: Allcode, as: 'actionData', foreignKey: 'actionCode', targetKey: 'code', attributes: ['code','value'] }
+        ],
+        order: [['timestamp','DESC']]
+    });
+
+    return interactions;
+}
+
+export async function getAllInteractions(filterActionCode = null) {
+    const whereClause = {};
+    if (filterActionCode) whereClause.actionCode = filterActionCode;
+
+    const interactions = await Interaction.findAll({
+        where: whereClause,
+        include: [
+            { model: User, as: 'userData', attributes: ['id','email','firstName','lastName'] },
+            { model: Product, as: 'productData' },
+            { model: Allcode, as: 'actionData', foreignKey: 'actionCode', targetKey: 'code', attributes: ['code','value'] }
+        ],
+        order: [['timestamp','DESC']]
+    });
+
+    return interactions;
+}
+
+export async function deleteInteraction(userId, productId) {
+    return await Interaction.destroy({ where: { userId, productId } });
+}

@@ -4,12 +4,10 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class Interaction extends Model {
         static associate(models) {
-            // Liên kết với User
             Interaction.belongsTo(models.User, { foreignKey: 'userId', as: 'userData' });
-            // Liên kết với Product
             Interaction.belongsTo(models.Product, { foreignKey: 'productId', as: 'productData' });
-            // Liên kết với Allcode (action)
-            Interaction.belongsTo(models.Allcode, { foreignKey: 'actionId', as: 'actionData' });
+            // FK tới Allcode bằng cột 'code' thay vì 'id'
+            Interaction.belongsTo(models.Allcode, { foreignKey: 'actionCode', targetKey: 'code', as: 'actionData' });
         }
     }
 
@@ -29,8 +27,8 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: false
             },
-            actionId: {
-                type: DataTypes.INTEGER,
+            actionCode: {
+                type: DataTypes.STRING(50),
                 allowNull: false
             },
             device_type: {
@@ -47,13 +45,7 @@ module.exports = (sequelize, DataTypes) => {
             sequelize,
             modelName: 'Interaction',
             tableName: 'Interactions',
-            timestamps: false,
-            indexes: [
-                {
-                    unique: true,
-                    fields: ['userId', 'productId']
-                }
-            ]
+            timestamps: false
         }
     );
 
