@@ -5,6 +5,17 @@ export async function logInteraction(userId, productId, actionCode, device) {
     const action = await Allcode.findOne({ where: { type: 'ACTION', code: actionCode } });
     if (!action) throw new Error(`Action code "${actionCode}" không tồn tại`);
 
+    // Kiểm tra userId, productId tồn tại
+    const user = await User.findByPk(userId);
+    const product = await Product.findByPk(productId);
+    if (!user || !product) {
+        throw new Error('User hoặc Product không tồn tại');
+    }
+    // Kiểm tra device_type hợp lệ nếu được cung cấp
+    const validDevices = ['desktop', 'mobile', 'tablet'];
+    if (device && !validDevices.includes(device)) {
+        throw new Error('device_type không hợp lệ');
+    }
     // Tạo bản ghi mới
     const record = await Interaction.create({
         userId,
@@ -12,7 +23,7 @@ export async function logInteraction(userId, productId, actionCode, device) {
         actionCode: action.code,
         device_type: device,
         timestamp: new Date()
-    });
+    },{raw: true }); // Đảm bảo trả plain object
 
     return record;
 }
@@ -27,7 +38,9 @@ export async function getUserInteractions(userId, filterActionCode = null) {
             { model: Product, as: 'productData' },
             { model: Allcode, as: 'actionData', foreignKey: 'actionCode', targetKey: 'code', attributes: ['code','value'] }
         ],
-        order: [['timestamp','DESC']]
+        order: [['timestamp','DESC']],
+        raw: true,        // BẮT BUỘC
+        nest: true        // Quan trọng: giữ cấu trúc include
     });
 
     return interactions;
@@ -44,7 +57,9 @@ export async function getAllInteractions(filterActionCode = null) {
             { model: Product, as: 'productData' },
             { model: Allcode, as: 'actionData', foreignKey: 'actionCode', targetKey: 'code', attributes: ['code','value'] }
         ],
-        order: [['timestamp','DESC']]
+        order: [['timestamp','DESC']],
+        raw: true,
+        nest: true,
     });
 
     return interactions;
