@@ -5,34 +5,34 @@ export async function logInteractionController(req, res) {
         const { userId, productId, actionCode, device } = req.body;
         const record = await interactionService.logInteraction(userId, productId, actionCode, device);
 
-        res.status(200).json({ success: true, data: record.get({ plain: true }) });
+        res.status(200).json({ success: true, data:record});
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 }
 
+// getUserInteractionsController
 export async function getUserInteractionsController(req, res) {
     try {
         const userId = req.params.userId;
         const actionCode = req.query.action || null;
 
         const interactions = await interactionService.getUserInteractions(userId, actionCode);
-        const data = interactions.map(i => i.get({ plain: true }));
 
-        res.status(200).json({ success: true, data });
+        res.status(200).json({ success: true, data: interactions });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 }
 
+// getAllInteractionsController
 export async function getAllInteractionsController(req, res) {
     try {
         const actionCode = req.query.action || null;
 
         const interactions = await interactionService.getAllInteractions(actionCode);
-        const data = interactions.map(i => i.get({ plain: true }));
 
-        res.status(200).json({ success: true, data });
+        res.status(200).json({ success: true, data: interactions });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

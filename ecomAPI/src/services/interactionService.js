@@ -23,7 +23,7 @@ export async function logInteraction(userId, productId, actionCode, device) {
         actionCode: action.code,
         device_type: device,
         timestamp: new Date()
-    });
+    },{raw: true }); // Đảm bảo trả plain object
 
     return record;
 }
@@ -38,7 +38,9 @@ export async function getUserInteractions(userId, filterActionCode = null) {
             { model: Product, as: 'productData' },
             { model: Allcode, as: 'actionData', foreignKey: 'actionCode', targetKey: 'code', attributes: ['code','value'] }
         ],
-        order: [['timestamp','DESC']]
+        order: [['timestamp','DESC']],
+        raw: true,        // BẮT BUỘC
+        nest: true        // Quan trọng: giữ cấu trúc include
     });
 
     return interactions;
@@ -55,7 +57,9 @@ export async function getAllInteractions(filterActionCode = null) {
             { model: Product, as: 'productData' },
             { model: Allcode, as: 'actionData', foreignKey: 'actionCode', targetKey: 'code', attributes: ['code','value'] }
         ],
-        order: [['timestamp','DESC']]
+        order: [['timestamp','DESC']],
+        raw: true,
+        nest: true,
     });
 
     return interactions;
