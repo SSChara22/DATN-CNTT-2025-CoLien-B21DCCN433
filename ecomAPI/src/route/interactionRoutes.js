@@ -1,7 +1,10 @@
 import express from "express";
 import * as interactionController from "../controllers/interactionController.js"; // ESM import
 const router = express.Router();
+import { validateLogInteraction } from "../middlewares/validateInteraction.js";
 
+// Ghi interaction mới với middleware xác thực
+router.post("/", validateLogInteraction, interactionController.logInteractionController);
 // Ghi interaction mới (view/cart/purchase)
 router.post("/", interactionController.logInteractionController);
 
