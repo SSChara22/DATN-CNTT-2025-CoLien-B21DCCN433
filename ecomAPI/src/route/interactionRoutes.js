@@ -5,8 +5,6 @@ import { validateLogInteraction } from "../middlewares/validateInteraction.js";
 
 // Ghi interaction mới với middleware xác thực
 router.post("/", validateLogInteraction, interactionController.logInteractionController);
-// Ghi interaction mới (view/cart/purchase)
-router.post("/", interactionController.logInteractionController);
 
 // Lấy tất cả interaction của user
 router.get("/user/:userId", interactionController.getUserInteractionsController);
