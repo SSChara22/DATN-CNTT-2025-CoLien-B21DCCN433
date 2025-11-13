@@ -6,6 +6,8 @@ import { toast } from 'react-toastify';
 import { addItemCartStart } from '../../action/ShopCartAction';
 import './InfoDetailProduct.scss';
 import CommonUtils from '../../utils/CommonUtils';
+import useInteraction from '../../utils/useInteraction';
+
 function InfoDetailProduct(props) {
     let { dataProduct } = props
     let [arrDetail, setarrDetail] = useState([])
@@ -15,6 +17,8 @@ function InfoDetailProduct(props) {
     const [activeLinkId, setactiveLinkId] = useState('')
     const [quantity, setquantity] = useState('')
     const [quantityProduct, setquantityProduct] = useState(1)
+    const { trackCart } = useInteraction();
+
     useEffect(() => {
 
         let { productDetail } = dataProduct ? dataProduct : []
@@ -60,6 +64,10 @@ function InfoDetailProduct(props) {
                 productdetailsizeId: activeLinkId,
                 quantity: quantityProduct,
             }))
+            // Track cart interaction
+            if (dataProduct?.id) {
+                trackCart(props.userId, dataProduct.id);
+            }
         } else {
             toast.error("Đăng nhập để thêm vào giỏ hàng")
         }

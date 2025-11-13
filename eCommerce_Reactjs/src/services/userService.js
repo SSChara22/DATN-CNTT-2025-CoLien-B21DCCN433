@@ -425,6 +425,11 @@ const createNewReceiptDetailService = (data) => {
 const getExchangeRate = () => {
     return axios.get(`https://tygia.com/json.php?ran=0&gold=0&bank=VIETCOM&date=now`)
 }
+
+//==================INTERACTION==========================//
+// Import from interactionService for convenience
+export { logInteraction, getUserInteractions, getAllInteractions, deleteInteraction } from './interactionService';
+
 export {
     getAllUsers, getAllCodeService, createNewUser, DeleteUserService, getDetailUserById, UpdateUserService,
     createAllCodeService, getDetailAllcodeById, UpdateAllcodeService, DeleteAllcodeService, handleLoginService,
