@@ -234,7 +234,7 @@ const LoginWebPage = () => {
                                                 Tài khoản mới
                                             </a>
                                         </div>
-                                        <FacebookLoginButton
+                                        {/* <FacebookLoginButton
                                             text="Đăng nhập với Facebook"
                                             iconSize="25px"
                                             style={{
@@ -255,7 +255,7 @@ const LoginWebPage = () => {
                                                 fontSize: "16px",
                                             }}
                                             onClick={() => signInwithGoogle()}
-                                        />
+                                        /> */}
                                     </form>
                                 </div>
                                 {/* End Login Form */}
