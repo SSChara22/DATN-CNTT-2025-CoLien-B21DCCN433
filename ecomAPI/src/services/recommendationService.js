@@ -1,0 +1,283 @@
+import db from "../models/index";
+import fs from "fs";
+import path from "path";
+import moment from "moment";
+const { Op } = require("sequelize");
+
+const ROOT = path.resolve(__dirname, "../../..");
+const PERF_CSV = path.join(ROOT, "processed_data", "model_performance.csv");
+
+function pickBestModel() {
+  try {
+    const csv = fs.readFileSync(PERF_CSV, "utf8");
+    const lines = csv.trim().split(/\r?\n/).slice(1);
+    let best = { name: null, map10: -1 };
+    for (const line of lines) {
+      const [Model, , MAP10] = line.split(",");
+      const map = parseFloat(MAP10);
+      if (!isNaN(map) && map > best.map10) best = { name: Model, map10: map };
+    }
+    return best.name || "LNCM";
+  } catch {
+    // When no CSV found, we still expose a model name label for UI
+    return "LNCM";
+  }
+}
+
+async function ensureTables() {
+  const qi = db.sequelize.getQueryInterface();
+  // recommendations
+  try {
+    await qi.describeTable('recommendations');
+  } catch {
+    await qi.createTable('recommendations', {
+      id: { type: db.Sequelize.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
+      userId: { type: db.Sequelize.INTEGER, allowNull: false },
+      productId: { type: db.Sequelize.INTEGER, allowNull: false },
+      modelName: { type: db.Sequelize.STRING(50), allowNull: false },
+      score: { type: db.Sequelize.FLOAT, allowNull: false, defaultValue: 0 },
+      details: { type: db.Sequelize.TEXT('long'), allowNull: true },
+      createdAt: { type: db.Sequelize.DATE, allowNull: false, defaultValue: db.Sequelize.NOW },
+      updatedAt: { type: db.Sequelize.DATE, allowNull: false, defaultValue: db.Sequelize.NOW }
+    });
+  }
+  // model_runs
+  try {
+    await qi.describeTable('model_runs');
+  } catch {
+    await qi.createTable('model_runs', {
+      id: { type: db.Sequelize.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
+      userId: { type: db.Sequelize.INTEGER, allowNull: false },
+      modelName: { type: db.Sequelize.STRING(50), allowNull: false },
+      metricsJson: { type: db.Sequelize.TEXT('long'), allowNull: true },
+      recommendationsJson: { type: db.Sequelize.TEXT('long'), allowNull: true },
+      createdAt: { type: db.Sequelize.DATE, allowNull: false, defaultValue: db.Sequelize.NOW },
+      updatedAt: { type: db.Sequelize.DATE, allowNull: false, defaultValue: db.Sequelize.NOW }
+    });
+  }
+}
+
+function deriveContext(ts) {
+  const m = moment(ts);
+  const hour = m.hour();
+  const month = m.month() + 1;
+  const dow = m.isoWeekday();
+  const isWeekend = dow >= 6 ? 1 : 0;
+  const season = month <= 2 || month === 12 ? "winter" : month <= 5 ? "spring" : month <= 8 ? "summer" : "autumn";
+  const time_of_day = hour < 6 ? "night" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+  return { hour, month, day_of_week: dow, is_weekend: isWeekend, season, time_of_day, day_name: m.format("dddd"), date: m.format("YYYY-MM-DD") };
+}
+
+function priceRange(price) {
+  if (price == null) return "unknown";
+  if (price < 200000) return "low";
+  if (price < 1000000) return "mid";
+  if (price < 3000000) return "high";
+  return "premium";
+}
+
+function intentFromInteractions(actions) {
+  // high if any purchase, medium if any cart, else low
+  const set = new Set(actions);
+  return set.has("purchase") ? "high" : set.has("cart") ? "medium" : "low";
+}
+
+function scoreSample({ rating, rating_count, product_views, discount_percentage, intent_weight }) {
+  // Simple bounded 0..1 score
+  const r = isNaN(rating) ? 0 : Math.max(0, Math.min(1, (rating - 1) / 4));
+  const rc = Math.min(1, (rating_count || 0) / 50);
+  const pv = Math.min(1, (product_views || 0) / 50);
+  const disc = Math.min(1, Math.max(0, (discount_percentage || 0) / 70));
+  const iw = intent_weight; // 0.0, 0.5, 1.0
+  return 0.45 * r + 0.15 * rc + 0.15 * pv + 0.15 * disc + 0.10 * iw;
+}
+
+async function buildUserProductFeatures(userId) {
+  // gather products and features
+  const products = await db.Product.findAll({
+    where: { statusId: 'S1' },
+    raw: true
+  });
+  const productIds = products.map(p => p.id);
+  // map product -> details
+  const details = await db.ProductDetail.findAll({ where: { productId: { [Op.in]: productIds } }, raw: true });
+  const detailByProduct = new Map();
+  for (const d of details) {
+    if (!detailByProduct.has(d.productId)) detailByProduct.set(d.productId, []);
+    detailByProduct.get(d.productId).push(d);
+  }
+  const comments = await db.Comment.findAll({ where: { productId: { [Op.in]: productIds } }, raw: true });
+  const commentsByProduct = new Map();
+  for (const c of comments) {
+    if (!commentsByProduct.has(c.productId)) commentsByProduct.set(c.productId, []);
+    commentsByProduct.get(c.productId).push(c);
+  }
+  const interactions = await db.Interaction.findAll({ where: { userId, productId: { [Op.in]: productIds } }, raw: true, order: [['timestamp','DESC']] });
+  const lastInter = interactions[0];
+  const actsByProduct = new Map();
+  for (const it of interactions) {
+    if (!actsByProduct.has(it.productId)) actsByProduct.set(it.productId, []);
+    actsByProduct.get(it.productId).push(it.actionCode);
+  }
+  // derive user-level context
+  const nowCtx = deriveContext(new Date());
+  const user = await db.User.findOne({ where: { id: userId }, raw: true });
+  const genderCode = user?.genderId || null;
+  // device type: use last interaction else unknown
+  const device_type = lastInter?.device_type || 'unknown';
+
+  const results = [];
+  for (const p of products) {
+    const det = (detailByProduct.get(p.id) || [])[0] || {};
+    const price = det.discountPrice || null;
+    const orig = det.originalPrice || null;
+    const discount_percentage = price && orig ? Math.round(((orig - price) / Math.max(1, orig)) * 100) : 0;
+    const product_views = p.view || 0;
+    const list = commentsByProduct.get(p.id) || [];
+    const rating_count = list.length;
+    const rating = rating_count ? (list.reduce((s, c) => s + (c.star || 0), 0) / rating_count) : null;
+    const actions = actsByProduct.get(p.id) || [];
+    const purchase_intent = intentFromInteractions(actions);
+    const intent_weight = purchase_intent === 'high' ? 1.0 : purchase_intent === 'medium' ? 0.5 : 0.0;
+    const s = scoreSample({ rating, rating_count, product_views, discount_percentage, intent_weight });
+    // build full feature record for audit/comparison if needed
+    const ctx = nowCtx; // using current-time context; per-interaction context can be added if desired
+    results.push({
+      productId: p.id,
+      price, original_price: orig,
+      discount_percentage,
+      product_views,
+      rating: rating || 0,
+      rating_count,
+      purchase_intent,
+      interaction_type: actions[0] || null,
+      timestamp: lastInter?.timestamp || null,
+      device_type,
+      gender: genderCode || null,
+      category: p.categoryId,
+      brand: p.brandId,
+      price_range: priceRange(price),
+      time_of_day: ctx.time_of_day,
+      day_of_week: ctx.day_of_week,
+      month: ctx.month,
+      season: ctx.season,
+      day_name: ctx.day_name,
+      is_weekend: ctx.is_weekend,
+      hour: ctx.hour,
+      date: ctx.date,
+      score: s
+    });
+  }
+  // sort by score desc
+  results.sort((a,b)=>b.score-a.score);
+  return results;
+}
+
+async function computeRecommendationsForUser(userId, limit=5) {
+  // Generate multiple DB-scoring variants and choose best
+  const base = await buildUserProductFeatures(userId);
+  const likedInter = await db.Interaction.findAll({
+    where: { userId, actionCode: { [Op.in]: ['cart','purchase'] } },
+    include: [{ model: db.Product, as: 'productData', attributes: ['id','categoryId','brandId'] }],
+    raw: true, nest: true
+  });
+  const catSet = new Set(); const brandSet = new Set();
+  for (const it of likedInter) { if (it.productData?.categoryId) catSet.add(it.productData.categoryId); if (it.productData?.brandId) brandSet.add(it.productData.brandId); }
+
+  const variants = [
+    // Names aligned to requested set: bmf, encm, lncm, neumf
+    { name: 'bmf',   weights: { r:0.20, rc:0.10, pv:0.20, disc:0.35, iw:0.15 } },
+    { name: 'encm',  weights: { r:0.30, rc:0.10, pv:0.15, disc:0.10, iw:0.35 } },
+    { name: 'lncm',  weights: { r:0.55, rc:0.20, pv:0.10, disc:0.10, iw:0.05 } },
+    { name: 'neumf', weights: { r:0.40, rc:0.15, pv:0.15, disc:0.10, iw:0.20 } },
+  ];
+
+  function rescore(list, w){
+    return list.map(x=>{
+      const r = Math.max(0, Math.min(1, (x.rating - 1) / 4));
+      const rc = Math.min(1, (x.rating_count||0)/50);
+      const pv = Math.min(1, (x.product_views||0)/50);
+      const disc = Math.min(1, Math.max(0, (x.discount_percentage||0)/70));
+      const iw = x.purchase_intent==='high'?1.0:x.purchase_intent==='medium'?0.5:0.0;
+      const score = w.r*r + w.rc*rc + w.pv*pv + w.disc*disc + w.iw*iw;
+      return { ...x, score };
+    }).sort((a,b)=>b.score-a.score)
+  }
+
+  async function backfillTop(scoredItems){
+    let top = scoredItems.slice(0, limit).map(x=>({ productId:x.productId, score:x.score }));
+    if (top.length >= limit) return top;
+    const existing = new Set(top.map(t=>t.productId));
+    if (catSet.size || brandSet.size){
+      const sameCatOrBrand = await db.Product.findAll({
+        where: {
+          statusId:'S1', id:{ [Op.notIn]: Array.from(existing) },
+          [Op.or]: [
+            catSet.size? { categoryId: { [Op.in]: Array.from(catSet) } } : null,
+            brandSet.size? { brandId: { [Op.in]: Array.from(brandSet) } } : null,
+          ].filter(Boolean)
+        }, order: [['view','DESC']], attributes:['id'], raw:true
+      });
+      for (const p of sameCatOrBrand){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===limit) break; }
+    }
+    if (top.length < limit){
+      const need = limit-top.length;
+      const popular = await db.Product.findAll({ where:{ statusId:'S1', id:{ [Op.notIn]: Array.from(existing) } }, order:[['view','DESC']], limit: need, attributes:['id'], raw:true });
+      for (const p of popular){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===limit) break; }
+    }
+    return top;
+  }
+
+  const modelRuns = [];
+  for (const v of variants){
+    const rescored = rescore(base, v.weights);
+    const topV = await backfillTop(rescored);
+    // simple metrics: avg score, intent hits, cat/brand alignment
+    const byId = new Map(rescored.map(x=>[x.productId, x]));
+    const avgScore = topV.reduce((s,t)=>s+(byId.get(t.productId)?.score||0),0)/Math.max(1, topV.length);
+    let aligned = 0; let intentHigh=0;
+    for (const t of topV){
+      const item = byId.get(t.productId);
+      if (!item) continue;
+      if (catSet.has(item.category) || brandSet.has(item.brand)) aligned++;
+      if (item.purchase_intent==='high') intentHigh++;
+    }
+    modelRuns.push({ modelName: v.name, recommendations: topV, metrics: { mode:'db_scoring', avgScore, aligned, intentHigh } });
+  }
+
+  // choose best: prioritize intentHigh, then aligned, then avgScore
+  modelRuns.sort((a,b)=> (b.metrics.intentHigh - a.metrics.intentHigh) || (b.metrics.aligned - a.metrics.aligned) || (b.metrics.avgScore - a.metrics.avgScore));
+  const best = modelRuns[0];
+  return { bestModel: best.modelName, top: best.recommendations, modelRuns };
+}
+
+async function initForUser(userId, limit=5) {
+  await ensureTables();
+  // clear previous
+  await db.Recommendation.destroy({ where: { userId } });
+  await db.ModelRun.destroy({ where: { userId } });
+  const { bestModel, top, modelRuns } = await computeRecommendationsForUser(userId, limit);
+  // save cache
+  for (const item of top) {
+    await db.Recommendation.create({ userId, productId: item.productId, modelName: bestModel, score: item.score || 0, details: null });
+  }
+  for (const r of modelRuns) {
+    await db.ModelRun.create({ userId, modelName: r.modelName, metricsJson: JSON.stringify(r.metrics||{}), recommendationsJson: JSON.stringify(r.recommendations||[]) });
+  }
+  return { bestModel };
+}
+
+async function getCachedForUser(userId, limit=5) {
+  await ensureTables();
+  const rows = await db.Recommendation.findAll({ where: { userId }, order: [['score', 'DESC']], limit, raw: true });
+  return rows;
+}
+
+async function clearForUser(userId) {
+  await ensureTables();
+  await db.Recommendation.destroy({ where: { userId } });
+  await db.ModelRun.destroy({ where: { userId } });
+  return true;
+}
+
+module.exports = { initForUser, getCachedForUser, clearForUser };

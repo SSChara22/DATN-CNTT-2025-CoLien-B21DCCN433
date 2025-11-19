@@ -1,0 +1,16 @@
+{
+  "n_users": 200,
+  "n_items": 500,
+  "n_contexts": [
+    4,
+    4,
+    3,
+    20
+  ],
+  "embedding_dim": 50,
+  "context_dim": 8,
+  "hidden_dims": [
+    64,
+    32
+  ]
+}

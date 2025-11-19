@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
     getDetailProductByIdService,
@@ -9,23 +9,42 @@ import ProfileProduct from "../../component/Product/ProfileProduct";
 import ReviewProduct from "../../component/Product/ReviewProduct";
 import DescriptionProduct from "../../component/Product/DescriptionProduct";
 import ProductFeature from "../../component/HomeFeature/ProductFeature";
+import useInteraction from "../../utils/useInteraction";
+
 function DetailProductPage(props) {
     const [dataProduct, setDataProduct] = useState({});
     const [dataDetailSize, setdataDetailSize] = useState({});
     const { id } = useParams();
     const [user, setUser] = useState({});
     const [dataProductRecommend, setdataProductRecommend] = useState([]);
+    const lastFetchedProductId = useRef(null);
+    const { trackView } = useInteraction();
+
     useEffect(() => {
+        if (lastFetchedProductId.current === id) {
+            return;
+        }
+
+        lastFetchedProductId.current = id;
+
         const userData = JSON.parse(localStorage.getItem("userData"));
         if (userData) {
             fetchProductFeature(userData.id);
             setUser(userData);
+        } else {
+            setUser({});
         }
 
         window.scrollTo(0, 0);
-
         fetchDetailProduct();
-    }, []);
+    }, [id]);
+
+    // Track view interaction when product data is loaded
+    useEffect(() => {
+        if (user?.id && dataProduct?.id) {
+            trackView(user.id, dataProduct.id);
+        }
+    }, [user?.id, dataProduct?.id, trackView]);
     let sendDataFromInforDetail = (data) => {
         setdataDetailSize(data);
     };

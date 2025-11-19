@@ -1,0 +1,5 @@
+Model,Precision@10,MAP@10,Model_Type,Description
+BMF,0.7201754385964914,0.8157853875036329,Traditional,Biased Matrix Factorization - Classic collaborative filtering with user/item biases
+NeuMF,0.7219298245614036,0.8152798024317766,Neural,Neural Matrix Factorization - Advanced neural approach with GMF and MLP components
+LNCM,0.7245614035087719,0.800249176299677,Neural,Linear Neural Collaborative Model - Combines linear MF with neural networks
+ENCM,0.7157894736842105,0.7811472734008951,Context-Aware,Explicit Neural Collaborative Model - Context-aware neural recommendations with explicit features

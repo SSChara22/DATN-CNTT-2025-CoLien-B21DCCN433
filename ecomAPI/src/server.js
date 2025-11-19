@@ -36,7 +36,7 @@ app.use(function (req, res, next) {
 
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
-app.use("/api/interactions", interactionRoutes);
+app.use("/api/interaction", interactionRoutes);
 
 
 viewEngine(app);

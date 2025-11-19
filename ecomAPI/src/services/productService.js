@@ -1,5 +1,6 @@
 import db from "../models/index";
 import jsrecommender from 'js-recommender'
+import recommendationService from './recommendationService'
 require('dotenv').config();
 const { Op } = require("sequelize");
 function dynamicSort(property) {
@@ -1084,37 +1085,44 @@ let getProductRecommend = (data) => {
                     errMessage: 'Missing required parameter!'
                 })
             } else {
-                let recommender = new jsrecommender.Recommender();
-
-                let table = new jsrecommender.Table();
-                let rateList = await db.Comment.findAll({
-                    where: {
-                        star: { [Op.not]: null }
-                    }
-                })
-
-                for (let i = 0; i < rateList.length; i++) {
-                    table.setCell(`${rateList[i].productId}`, `${rateList[i].userId}`, rateList[i].star)
+                // 1) Try cached recommendations
+                const cached = await db.Recommendation.findAll({ where: { userId: data.userId }, order: [["score","DESC"]], limit: +data.limit });
+                let recProductIds = [];
+                if (cached && cached.length > 0) {
+                    recProductIds = cached.map(r => r.productId);
+                } else {
+                    // If no cache exists (user hasn't logged in via API path), initialize once
+                    try { await recommendationService.initForUser(data.userId, +data.limit || 5); } catch (e) {}
+                    const fresh = await db.Recommendation.findAll({ where: { userId: data.userId }, order: [["score","DESC"]], limit: +data.limit });
+                    recProductIds = fresh.map(r => r.productId);
                 }
-                let model = recommender.fit(table);
-                let predicted_table = recommender.transform(table);
 
-                for (let i = 0; i < predicted_table.columnNames.length; ++i) {
-                    let user = predicted_table.columnNames[i];
-
-                    for (let j = 0; j < predicted_table.rowNames.length; ++j) {
-                        let product = predicted_table.rowNames[j];
-                        if (user == data.userId && Math.round(predicted_table.getCell(product, user)) > 3) {
-                            let productdata = await db.Product.findOne({ where: { id: product } })
-                            if (productArr.length == +data.limit) {
-                                break;
-                            } else {
-                                productArr.push(productdata)
+                if (recProductIds.length > 0) {
+                    for (const pid of recProductIds) {
+                        let productdata = await db.Product.findOne({ where: { id: pid } })
+                        if (productdata) productArr.push(productdata);
+                    }
+                } else {
+                    // 2) Fallback to legacy js-recommender flow
+                    let recommender = new jsrecommender.Recommender();
+                    let table = new jsrecommender.Table();
+                    let rateList = await db.Comment.findAll({
+                        where: { star: { [Op.not]: null } }
+                    })
+                    for (let i = 0; i < rateList.length; i++) {
+                        table.setCell(`${rateList[i].productId}`, `${rateList[i].userId}`, rateList[i].star)
+                    }
+                    let model = recommender.fit(table);
+                    let predicted_table = recommender.transform(table);
+                    for (let i = 0; i < predicted_table.columnNames.length; ++i) {
+                        let user = predicted_table.columnNames[i];
+                        for (let j = 0; j < predicted_table.rowNames.length; ++j) {
+                            let product = predicted_table.rowNames[j];
+                            if (user == data.userId && Math.round(predicted_table.getCell(product, user)) > 3) {
+                                let productdata = await db.Product.findOne({ where: { id: product } })
+                                if (productArr.length == +data.limit) { break; } else { productArr.push(productdata) }
                             }
-
-
                         }
-
                     }
                 }
                 if (productArr && productArr.length > 0) {
