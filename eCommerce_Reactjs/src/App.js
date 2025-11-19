@@ -81,7 +81,7 @@ function App() {
                     path="/payment/vnpay"
                     element={
                         <>
-                            <TopMenu />
+                            <Header />
                             <VnpayPaymentPage />
                             <Footer />
                         </>
@@ -91,7 +91,7 @@ function App() {
                     path="/payment/vnpay_return"
                     element={
                         <>
-                            <TopMenu />
+                            <Header />
                             <VnpayPaymentSuccess />
                             <Footer />
                         </>
@@ -190,7 +190,7 @@ function App() {
                     path="/order/:userId"
                     element={
                         <>
-                            <TopMenu />
+                            <Header />
                             <OrderHomePage />
                             <Footer />
                         </>
