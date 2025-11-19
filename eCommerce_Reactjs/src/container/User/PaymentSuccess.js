@@ -10,17 +10,19 @@ import {
     useParams,
     useLocation
 } from "react-router-dom";
+import useInteraction from '../../utils/useInteraction';
 
 
 function useQuery() {
     const { search } = useLocation();
-  
+
     return React.useMemo(() => new URLSearchParams(search), [search]);
   }
 
 function PaymentSuccess(props) {
     let query = useQuery();
-    
+    const { trackPurchase } = useInteraction();
+
     useEffect(() => {
         let orderData =  JSON.parse(localStorage.getItem("orderData"))
         localStorage.removeItem("orderData")
@@ -28,7 +30,7 @@ function PaymentSuccess(props) {
             orderData.paymentId = query.get("paymentId")
             orderData.token = query.get("token")
             orderData.PayerID = query.get("PayerID")
-    
+
             createNewOrder(orderData)
         }
     }, [])
@@ -36,6 +38,27 @@ function PaymentSuccess(props) {
         let res = await paymentOrderSuccessService(data)
         if(res && res.errCode ==0){
             toast.success("Thanh toán hóa đơn thành công")
+
+            // Track purchase interaction for each product in order
+            // Note: We need to get productId from cart data stored separately
+            // because arrDataShopCart only has productdetailsizeId
+            const cartDataRaw = localStorage.getItem('cartData');
+            if(data.userId && cartDataRaw) {
+                try {
+                    const cartData = JSON.parse(cartDataRaw);
+                    if(cartData && cartData.length > 0) {
+                        cartData.forEach(item => {
+                            if(item.productData?.id) {
+                                trackPurchase(data.userId, item.productData.id);
+                            }
+                        });
+                    }
+                    localStorage.removeItem('cartData');
+                } catch (error) {
+                    console.log('Error tracking purchase interactions:', error);
+                }
+            }
+
             const userData = JSON.parse(localStorage.getItem('userData'));
             setTimeout(()=>{
                 window.location.href='/user/order/'+userData.id

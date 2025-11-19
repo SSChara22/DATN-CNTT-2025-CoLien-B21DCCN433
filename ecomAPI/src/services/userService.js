@@ -1,4 +1,5 @@
 import db from "../models/index";
+import recommendationService from "./recommendationService";
 import bcrypt from "bcryptjs";
 import emailService from "./emailService";
 import { v4 as uuidv4 } from 'uuid';
@@ -191,6 +192,7 @@ let handleLogin = (data) => {
 
                             userData.user = user;
                             userData.accessToken = CommonUtils.encodeToken(user.id)
+                            try { await recommendationService.initForUser(user.id, 5); } catch (e) {}
                         } else {
                             userData.errCode = 3;
 

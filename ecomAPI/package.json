@@ -17,8 +17,8 @@
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
     "dateformat": "^5.0.3",
+    "dotenv": "^16.4.7",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
     "js-recommender": "^1.0.5",
@@ -43,7 +43,7 @@
     "@babel/core": "^7.26.10",
     "@babel/node": "^7.26.0",
     "@babel/preset-env": "^7.26.9",
-    "nodemon": "^3.1.9",
+    "nodemon": "^3.1.11",
     "sequelize-cli": "^6.6.2"
   }
 }

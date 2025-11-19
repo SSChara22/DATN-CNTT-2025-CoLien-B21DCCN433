@@ -160,6 +160,16 @@ const getProductShopcartService = (data) => {
 const getProductRecommendService = (data) => {
     return axios.get(`/api/get-product-recommend?userId=${data.userId}&limit=${data.limit}`)
 }
+// Recommendation (auth required)
+const initRecommendationsService = (limit=5) => {
+    return axios.post(`/api/recommend/init?limit=${limit}`)
+}
+const listRecommendationsService = (limit=5) => {
+    return axios.get(`/api/recommend/list?limit=${limit}`)
+}
+const clearRecommendationsService = () => {
+    return axios.delete(`/api/recommend/clear`)
+}
 //===============BANNER======================//
 const createNewBannerService = (data) => {
     return axios.post(`/api/create-new-banner`, data)
@@ -425,6 +435,11 @@ const createNewReceiptDetailService = (data) => {
 const getExchangeRate = () => {
     return axios.get(`https://tygia.com/json.php?ran=0&gold=0&bank=VIETCOM&date=now`)
 }
+
+//==================INTERACTION==========================//
+// Import from interactionService for convenience
+export { logInteraction, getUserInteractions, getAllInteractions, deleteInteraction } from './interactionService';
+
 export {
     getAllUsers, getAllCodeService, createNewUser, DeleteUserService, getDetailUserById, UpdateUserService,
     createAllCodeService, getDetailAllcodeById, UpdateAllcodeService, DeleteAllcodeService, handleLoginService,
@@ -448,5 +463,6 @@ export {
     getStatisticByMonth, getStatisticByDay, checkPhonenumberEmail, createNewSupplierService, updateSupplierService, deleteSupplierService, getDetailSupplierByIdService,
     getAllSupplier, createNewReceiptService, getAllReceipt, getDetailReceiptByIdService, deleteReceiptService, updateReceiptService, createNewReceiptDetailService,
     getStatisticOverturn, getStatisticProfit, getProductShopcartService, getDetailUserByEmail, getProductRecommendService,
-    getStatisticStockProduct, getExchangeRate, paymentOrderVnpayService, confirmOrderVnpay, paymentOrderVnpaySuccessService
+    getStatisticStockProduct, getExchangeRate, paymentOrderVnpayService, confirmOrderVnpay, paymentOrderVnpaySuccessService,
+    initRecommendationsService, listRecommendationsService, clearRecommendationsService
 }

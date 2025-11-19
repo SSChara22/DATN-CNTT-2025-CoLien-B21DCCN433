@@ -12,6 +12,7 @@ import orderController from '../controllers/orderController';
 import addressUserController from '../controllers/addressUserController';
 import messageController from '../controllers/messageController';
 import statisticController from '../controllers/statisticController';
+import recommendationController from '../controllers/recommendationController';
 import middlewareControllers from '../middlewares/jwtVerify';
 import supplierController from '../controllers/supplierController';
 import receiptController from '../controllers/receiptController';
@@ -173,6 +174,23 @@ let initwebRoutes = (app) => {
     router.put('/api/update-receipt', middlewareControllers.verifyTokenAdmin, receiptController.updateReceipt)
     router.delete('/api/delete-receipt', middlewareControllers.verifyTokenAdmin, receiptController.deleteReceipt)
     router.post('/api/create-new-detail-receipt', middlewareControllers.verifyTokenAdmin, receiptController.createNewReceiptDetail)
+
+    //=================INTERNAL RECOMMENDATION====================//
+    // Initialize or reset recommendations for current user (on demand)
+    router.post('/api/recommend/init', middlewareControllers.verifyTokenUser, recommendationController.initForCurrentUser)
+    // Fetch cached recs for current user
+    router.get('/api/recommend/list', middlewareControllers.verifyTokenUser, recommendationController.listForCurrentUser)
+    // Clear cached recs for current user (call on logout)
+    router.delete('/api/recommend/clear', middlewareControllers.verifyTokenUser, recommendationController.clearForCurrentUser)
+    // CORS preflight for standalone viewer
+    router.options('/internal/recommendations', (req, res) => {
+        res.set('Access-Control-Allow-Origin', '*')
+        res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+        res.set('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        res.status(204).end()
+    })
+    // Private dashboard page (no link from main site)
+    router.get('/internal/recommendations', middlewareControllers.verifyTokenUser, recommendationController.dashboardPage)
     return app.use("/", router);
 }
 

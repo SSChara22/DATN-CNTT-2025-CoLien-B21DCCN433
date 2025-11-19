@@ -5,6 +5,7 @@ import initwebRoutes from "./route/web";
 import connectDB from "./config/connectDB";
 import http from "http";
 import { sendMessage } from "./services/messageService";
+import interactionRoutes from "./route/interactionRoutes.js";
 require("dotenv").config();
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 let app = express();
@@ -35,6 +36,8 @@ app.use(function (req, res, next) {
 
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
+app.use("/api/interaction", interactionRoutes);
+
 
 viewEngine(app);
 initwebRoutes(app);

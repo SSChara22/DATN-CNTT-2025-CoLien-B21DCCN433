@@ -20,8 +20,11 @@ import ShopCartItem from "../../component/ShopCart/ShopCartItem";
 import VoucherModal from "../ShopCart/VoucherModal";
 import CommonUtils from "../../utils/CommonUtils";
 import { EXCHANGE_RATES } from "../../utils/constant";
+import useInteraction from "../../utils/useInteraction";
+
 function OrderHomePage(props) {
     const dispatch = useDispatch();
+    const { trackPurchase } = useInteraction();
     const [dataAddressUser, setdataAddressUser] = useState([]);
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -165,6 +168,16 @@ function OrderHomePage(props) {
                 });
                 if (res && res.errCode === 0) {
                     toast.success("Đặt hàng thành công");
+
+                    // Track purchase interaction for each product in cart
+                    if (userId && dataCart && dataCart.length > 0) {
+                        dataCart.forEach(item => {
+                            if (item.productData?.id) {
+                                trackPurchase(userId, item.productData.id);
+                            }
+                        });
+                    }
+
                     dispatch(getItemCartStart(userId));
                     setTimeout(() => {
                         window.location.href = "/user/order/" + userId;
@@ -199,9 +212,13 @@ function OrderHomePage(props) {
                                 total: total,
                             })
                         );
+                        // Save cart data for tracking purchase interactions later
+                        localStorage.setItem("cartData", JSON.stringify(dataCart));
                         window.location.href = res.link;
                     }
                 } else {
+                    // Save cart data for tracking purchase interactions later
+                    localStorage.setItem("cartData", JSON.stringify(dataCart));
                     navigate("/payment/vnpay", {
                         state: {
                             orderData: {

@@ -1,8 +1,10 @@
 import React from "react";
+import { clearRecommendationsService } from "../../services/userService";
 import { NavLink } from "react-router-dom";
 import "./Header.scss";
 const TopMenu = (props) => {
-    let handleLogout = () => {
+    let handleLogout = async () => {
+        try { await clearRecommendationsService(); } catch (e) {}
         localStorage.removeItem("userData");
         localStorage.removeItem("token");
         window.location.href = "/login";

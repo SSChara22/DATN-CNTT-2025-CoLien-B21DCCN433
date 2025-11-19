@@ -1,0 +1,127 @@
+
+Bạn đã nói:
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recommendation Viewer (Standalone)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 16px; }
+    h1 { margin: 0 0 6px 0; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; max-width: 1600px; width: 100%; background: #fff; margin: 0 auto; }
+    label { display: block; font-size: 14px; color: #555; margin-bottom: 4px; }
+    input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+    button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; background: #0ea5e9; color: #fff; font-weight: 600; }
+    button.secondary { background: #64748b; }
+    #result { margin-top: 18px; height: calc(100vh - 220px); width: 100%; border: 1px solid #ddd; border-radius: 8px; }
+    .tip { font-size: 12px; color: #666; }
+    .error { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Recommendation Viewer</h1>
+  <p class="tip">Trang độc lập: nhập Base URL và Token để xem trang kết quả mô hình cho user hiện tại.</p>
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="baseUrl">Base URL (vd: http://localhost:8003)</label>
+        <input id="baseUrl" placeholder="http://localhost:8003" />
+      </div>
+      <div>
+        <label for="token">Authorization Token (Bearer)</label>
+        <input id="token" placeholder="Dán accessToken vào đây" />
+      </div>
+    </div>
+    <div class="actions">
+      <button id="loadBtn">Tải trang kết quả</button>
+      <button id="saveBtn" class="secondary">Lưu</button>
+      <button id="clearBtn" class="secondary">Xoá</button>
+    </div>
+    <p class="tip">Trang đích: <code>/internal/recommendations</code> (yêu cầu Authorization: Bearer &lt;token&gt;)</p>
+    <iframe id="result"></iframe>
+    <div id="err" class="error" style="display:none; margin-top:8px;"></div>
+  </div>
+
+  <script>
+    const elBase = document.getElementById('baseUrl');
+    const elToken = document.getElementById('token');
+    const elLoad = document.getElementById('loadBtn');
+    const elSave = document.getElementById('saveBtn');
+    const elClear = document.getElementById('clearBtn');
+    const elResult = document.getElementById('result');
+    const elErr = document.getElementById('err');
+
+    // load persisted
+    (function init(){
+      elBase.value = localStorage.getItem('reco.baseUrl') || 'http://localhost:8003';
+      elToken.value = localStorage.getItem('reco.token') || '';
+    })();
+
+    function forceLight(html){
+      try{
+        if(!html) return html;
+        const inject = `
+<style id="__force_light__">
+  :root{ color-scheme: light !important; }
+  html,body{ background:#ffffff !important; color:#0f172a !important; }
+  body, * { color:#0f172a !important; text-shadow:none !important; }
+  a, a * { color:#0f172a !important; }
+  table{ background:#ffffff !important; border-color:#e5e7eb !important; }
+  th, td{ background:#ffffff !important; color:#0f172a !important; border-color:#e5e7eb !important; }
+  .kpi{ background:#ffffff !important; border-color:#e5e7eb !important; }
+  .best{ background:#ecfeff !important; }
+</style>
+`;
+
+        if(html.includes('</head>')) return html.replace('</head>', inject + '</head>');
+        return inject + html;
+      }catch(_){ return html; }
+    }
+
+    async function fetchDashboard(baseUrl, token){
+      const url = baseUrl.replace(/\/$/, '') + '/internal/recommendations';
+      const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+      if(!res.ok){
+        const text = await res.text();
+        throw new Error('HTTP ' + res.status + ': ' + text);
+      }
+      const txt = await res.text();
+      return forceLight(txt);
+    }
+
+    elLoad.addEventListener('click', async ()=>{
+      const base = elBase.value.trim();
+      const token = elToken.value.trim();
+      if(!base || !token){ alert('Vui lòng nhập Base URL và Token'); return; }
+      elResult.srcdoc = '<p style="padding:12px">Đang tải...</p>';
+      try{
+        const html = await fetchDashboard(base, token);
+        elResult.srcdoc = html;
+        elErr.style.display = 'none';
+      }catch(err){
+        elResult.srcdoc = '';
+        elErr.style.display = 'block';
+        elErr.textContent = (err?.message || err);
+      }
+    });
+
+    elSave.addEventListener('click', ()=>{
+      localStorage.setItem('reco.baseUrl', elBase.value.trim());
+      localStorage.setItem('reco.token', elToken.value.trim());
+      alert('Đã lưu');
+    });
+
+    elClear.addEventListener('click', ()=>{
+      localStorage.removeItem('reco.baseUrl');
+      localStorage.removeItem('reco.token');
+      elBase.value = '';
+      elToken.value = '';
+    });
+  </script>
+</body>
+</html>
