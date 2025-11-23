@@ -161,10 +161,10 @@ const getProductRecommendService = (data) => {
     return axios.get(`/api/get-product-recommend?userId=${data.userId}&limit=${data.limit}`)
 }
 // Recommendation (auth required)
-const initRecommendationsService = (limit=5) => {
+const initRecommendationsService = (limit=10) => {
     return axios.post(`/api/recommend/init?limit=${limit}`)
 }
-const listRecommendationsService = (limit=5) => {
+const listRecommendationsService = (limit=10) => {
     return axios.get(`/api/recommend/list?limit=${limit}`)
 }
 const clearRecommendationsService = () => {

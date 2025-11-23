@@ -5,6 +5,7 @@ import ProductFeature from "../../component/HomeFeature/ProductFeature";
 import NewProductFeature from "../../component/HomeFeature/NewProductFeature"
 import HomeBlog from '../../component/HomeFeature/HomeBlog';
 import ItemProduct from '../../component/Product/ItemProduct';
+import HeaderContent from "../../component/Content/HeaderContent";
 import { getAllBanner, getProductFeatureService, getProductNewService, getNewBlog, getProductRecommendService } from '../../services/userService';
 import Slider from 'react-slick';
 import "slick-carousel/slick/slick.css";
@@ -52,7 +53,7 @@ function HomePage(props) {
     }
     let fetchProductRecommend = async (userId) => {
         let res = await getProductRecommendService({
-            limit: 5,
+            limit: 10,
             userId: userId
         })
         if (res && res.errCode === 0) {
@@ -91,29 +92,9 @@ function HomePage(props) {
 
 
             <MainFeature></MainFeature>
-            {/* Gợi ý sản phẩm - render 5 items without slider */}
-            <section className="feature_product_area section_gap_bottom_custom">
-                <div className="container">
-                    <div className="row" style={{marginBottom: '16px'}}>
-                        <div className="col-12"><h3>Gợi ý sản phẩm</h3></div>
-                    </div>
-                    <div className="row box-productFeature">
-                        {dataProductRecommend && dataProductRecommend.slice(0,5).map((item, index) => (
-                            <ItemProduct
-                                id={item.id}
-                                key={index}
-                                width={350}
-                                height={419}
-                                type="col-lg-4 col-md-6"
-                                name={item.name}
-                                img={item?.productDetail?.[0]?.productImage?.[0]?.image}
-                                price={item?.productDetail?.[0]?.originalPrice}
-                                discountPrice={item?.productDetail?.[0]?.discountPrice}
-                            />
-                        ))}
-                    </div>
-                </div>
-            </section>
+            {dataProductRecommend && dataProductRecommend.length > 0 && (
+                <ProductFeature title={"Gợi ý sản phẩm"} data={dataProductRecommend}></ProductFeature>
+            )}
             <ProductFeature title={"Sản phẩm đặc trưng"} data={dataProductFeature}></ProductFeature>
             <NewProductFeature title="Sản phẩm mới" description="Những sản phẩm vừa ra mắt mới lạ cuốn hút người xem" data={dataNewProductFeature}></NewProductFeature>
             <HomeBlog data={dataNewBlog} />

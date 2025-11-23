@@ -1086,14 +1086,15 @@ let getProductRecommend = (data) => {
                 })
             } else {
                 // 1) Try cached recommendations
-                const cached = await db.Recommendation.findAll({ where: { userId: data.userId }, order: [["score","DESC"]], limit: +data.limit });
+                const requestedLimit = +data.limit;
+                let cached = await db.Recommendation.findAll({ where: { userId: data.userId }, order: [["score","DESC"]], limit: requestedLimit });
                 let recProductIds = [];
                 if (cached && cached.length > 0) {
                     recProductIds = cached.map(r => r.productId);
                 } else {
                     // If no cache exists (user hasn't logged in via API path), initialize once
-                    try { await recommendationService.initForUser(data.userId, +data.limit || 5); } catch (e) {}
-                    const fresh = await db.Recommendation.findAll({ where: { userId: data.userId }, order: [["score","DESC"]], limit: +data.limit });
+                    try { await recommendationService.initForUser(data.userId, requestedLimit || 10); } catch (e) {}
+                    const fresh = await db.Recommendation.findAll({ where: { userId: data.userId }, order: [["score","DESC"]], limit: requestedLimit });
                     recProductIds = fresh.map(r => r.productId);
                 }
 

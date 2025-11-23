@@ -4,7 +4,7 @@ import db from "../models";
 let initForCurrentUser = async (req, res) => {
   try {
     const userId = req.user.id;
-    const limit = +(req.query.limit || 5);
+    const limit = +(req.query.limit || 10);
     await recommendationService.initForUser(userId, limit);
     return res.status(200).json({ errCode: 0, message: 'initialized' });
   } catch (e) {
@@ -15,7 +15,7 @@ let initForCurrentUser = async (req, res) => {
 let listForCurrentUser = async (req, res) => {
   try {
     const userId = req.user.id;
-    const limit = +(req.query.limit || 5);
+    const limit = +(req.query.limit || 10);
     const recs = await recommendationService.getCachedForUser(userId, limit);
     // hydrate products
     const result = [];

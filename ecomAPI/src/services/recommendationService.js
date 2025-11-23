@@ -173,8 +173,9 @@ async function buildUserProductFeatures(userId) {
   return results;
 }
 
-async function computeRecommendationsForUser(userId, limit=5) {
+async function computeRecommendationsForUser(userId, limit=10) {
   // Generate multiple DB-scoring variants and choose best
+  const perModelLimit = 10; // each model should output 10 items
   const base = await buildUserProductFeatures(userId);
   const likedInter = await db.Interaction.findAll({
     where: { userId, actionCode: { [Op.in]: ['cart','purchase'] } },
@@ -205,8 +206,8 @@ async function computeRecommendationsForUser(userId, limit=5) {
   }
 
   async function backfillTop(scoredItems){
-    let top = scoredItems.slice(0, limit).map(x=>({ productId:x.productId, score:x.score }));
-    if (top.length >= limit) return top;
+    let top = scoredItems.slice(0, perModelLimit).map(x=>({ productId:x.productId, score:x.score }));
+    if (top.length >= perModelLimit) return top;
     const existing = new Set(top.map(t=>t.productId));
     if (catSet.size || brandSet.size){
       const sameCatOrBrand = await db.Product.findAll({
@@ -218,12 +219,12 @@ async function computeRecommendationsForUser(userId, limit=5) {
           ].filter(Boolean)
         }, order: [['view','DESC']], attributes:['id'], raw:true
       });
-      for (const p of sameCatOrBrand){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===limit) break; }
+      for (const p of sameCatOrBrand){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===perModelLimit) break; }
     }
-    if (top.length < limit){
-      const need = limit-top.length;
+    if (top.length < perModelLimit){
+      const need = perModelLimit-top.length;
       const popular = await db.Product.findAll({ where:{ statusId:'S1', id:{ [Op.notIn]: Array.from(existing) } }, order:[['view','DESC']], limit: need, attributes:['id'], raw:true });
-      for (const p of popular){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===limit) break; }
+      for (const p of popular){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===perModelLimit) break; }
     }
     return top;
   }
@@ -251,7 +252,7 @@ async function computeRecommendationsForUser(userId, limit=5) {
   return { bestModel: best.modelName, top: best.recommendations, modelRuns };
 }
 
-async function initForUser(userId, limit=5) {
+async function initForUser(userId, limit=10) {
   await ensureTables();
   // clear previous
   await db.Recommendation.destroy({ where: { userId } });
@@ -267,7 +268,7 @@ async function initForUser(userId, limit=5) {
   return { bestModel };
 }
 
-async function getCachedForUser(userId, limit=5) {
+async function getCachedForUser(userId, limit=10) {
   await ensureTables();
   const rows = await db.Recommendation.findAll({ where: { userId }, order: [['score', 'DESC']], limit, raw: true });
   return rows;
