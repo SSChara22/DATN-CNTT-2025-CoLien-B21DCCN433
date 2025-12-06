@@ -76,8 +76,16 @@
               <tr class="<%= (bestModelName && run.modelName===bestModelName) ? 'best' : '' %>">
                 <td><%= new Date(run.createdAt).toLocaleString() %></td>
                 <td><span class="tag"><%= run.modelName %></span></td>
-                <td><code><%= (run.metricsJson||'{}') %></code></td>
-                <td><code><%= (run.recommendationsJson||'[]') %></code></td>
+                <td>
+                  <% let m = {}; try { m = JSON.parse(run.metricsJson||'{}') } catch(e) {} %>
+                  <div>mode: <code><%= m.mode || '-' %></code></div>
+                  <div>MAP@10: <strong><%= (m.map10!=null ? m.map10.toFixed(4) : '-') %></strong></div>
+                  <div>Precision@10: <strong><%= (m.precision10!=null ? m.precision10.toFixed(4) : '-') %></strong></div>
+                </td>
+                <td>
+                  <% let recs = []; try{ recs = JSON.parse(run.recommendationsJson||'[]') }catch(e){} %>
+                  <code><%= recs.map(r => `${r.productId}:${(r.score||0).toFixed(3)}`).join(', ') %></code>
+                </td>
               </tr>
             <% }) %>
           </tbody>

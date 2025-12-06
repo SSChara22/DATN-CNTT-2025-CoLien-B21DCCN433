@@ -2,8 +2,14 @@ import db from "../models/index";
 import fs from "fs";
 import path from "path";
 import moment from "moment";
-const { Op } = require("sequelize");
 
+// Optional Python inference bridge (default export)
+let pythonInvoker = null;
+try {
+  pythonInvoker = require("./pythonInvoker.js").default;
+} catch (e) {
+  pythonInvoker = null;
+}
 const ROOT = path.resolve(__dirname, "../../..");
 const PERF_CSV = path.join(ROOT, "processed_data", "model_performance.csv");
 
@@ -173,7 +179,56 @@ async function buildUserProductFeatures(userId) {
   return results;
 }
 
+
 async function computeRecommendationsForUser(userId, limit=10) {
+  // Try Python inference first: evaluate trained models and select best by MAP@10 then Precision@10
+  if (pythonInvoker) {
+    const gtPurch = await db.Interaction.findAll({ where: { userId, actionCode: 'purchase' }, attributes: ['productId'], raw: true });
+    const gtSet = new Set(gtPurch.map(r => r.productId));
+    const nowCtx = deriveContext(new Date());
+    const lastInter = await db.Interaction.findOne({ where: { userId }, order: [['timestamp','DESC']], raw: true });
+    const ctxPayload = {
+      time_of_day: nowCtx.time_of_day,
+      season: nowCtx.season,
+      device_type: lastInter?.device_type || 'Mobile',
+      category: null
+    };
+    const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
+    const k = Math.max(1, Math.min(10, limit));
+    // Run the 4 model inferences in parallel to reduce overall latency
+    const parallel = await Promise.all(
+      modelNames.map(async (name) => {
+        try {
+          const resp = await pythonInvoker.runPythonInference({ user_id: userId, limit: k, model: name, context: ctxPayload });
+          return { name, resp };
+        } catch (e) {
+          return { name, resp: { ok: false, error: e?.message || String(e) } };
+        }
+      })
+    );
+    const modelRuns = [];
+    for (const { name, resp } of parallel) {
+      let recs = [];
+      if (resp && resp.ok && Array.isArray(resp.items)) {
+        recs = resp.items.map(it => ({ productId: it.productId, score: it.score || 0 }));
+      }
+      let hits = 0; let sumPrec = 0;
+      const denom = Math.max(1, Math.min(k, gtSet.size || 0));
+      for (let i = 0; i < Math.min(k, recs.length); i++) {
+        const rel = gtSet.has(recs[i].productId) ? 1 : 0;
+        if (rel) { hits += 1; sumPrec += hits / (i + 1); }
+      }
+      const precision10 = recs.length ? (hits / k) : 0;
+      const map10 = denom ? (sumPrec / denom) : 0;
+      modelRuns.push({ modelName: name, recommendations: recs.slice(0, k), metrics: { mode: 'python_infer', precision10, map10 } });
+    }
+    modelRuns.sort((a,b)=> (b.metrics.map10 - a.metrics.map10) || (b.metrics.precision10 - a.metrics.precision10));
+    if (modelRuns.length) {
+      const best = modelRuns[0];
+      return { bestModel: best.modelName, top: best.recommendations, modelRuns };
+    }
+    // fall through to heuristic if Python failed
+  }
   // Generate multiple DB-scoring variants and choose best
   const perModelLimit = 10; // each model should output 10 items
   const base = await buildUserProductFeatures(userId);
@@ -250,6 +305,7 @@ async function computeRecommendationsForUser(userId, limit=10) {
   modelRuns.sort((a,b)=> (b.metrics.intentHigh - a.metrics.intentHigh) || (b.metrics.aligned - a.metrics.aligned) || (b.metrics.avgScore - a.metrics.avgScore));
   const best = modelRuns[0];
   return { bestModel: best.modelName, top: best.recommendations, modelRuns };
+
 }
 
 async function initForUser(userId, limit=10) {

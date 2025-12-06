@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import HomeBanner from "../../component/HomeFeature/HomeBanner";
 import MainFeature from "../../component/HomeFeature/MainFeature";
 import ProductFeature from "../../component/HomeFeature/ProductFeature";
@@ -29,9 +29,7 @@ function HomePage(props) {
 
     useEffect(() => {
         const userData = JSON.parse(localStorage.getItem('userData'));
-        if (userData) {
-            fetchProductRecommend(userData.id)
-        }
+        if (userData) { fetchProductRecommend(userData.id) }
         fetchBlogFeature()
         fetchDataBrand()
         fetchProductFeature()
@@ -51,6 +49,7 @@ function HomePage(props) {
             setDataProductFeature(res.data)
         }
     }
+
     let fetchProductRecommend = async (userId) => {
         let res = await getProductRecommendService({
             limit: 10,
@@ -101,5 +100,8 @@ function HomePage(props) {
         </div>
     );
 }
-
 export default HomePage;
+
+
+
+

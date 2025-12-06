@@ -1,9 +1,16 @@
 import * as interactionService from "../services/interactionService.js";
+import recommendationService from "../services/recommendationService";
 
 export async function logInteractionController(req, res) {
     try {
         const { userId, productId, actionCode, device } = req.body;
         const record = await interactionService.logInteraction(userId, productId, actionCode, device);
+        // Recompute Top-10 recommendations for this user in real-time
+        try {
+            await recommendationService.initForUser(userId, 10);
+        } catch (e) {
+            // non-blocking: ignore errors to not affect UX
+        }
 
         res.status(200).json({ success: true, data:record});
     } catch (error) {
