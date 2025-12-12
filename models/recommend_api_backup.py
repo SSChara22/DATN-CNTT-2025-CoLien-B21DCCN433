@@ -10,28 +10,12 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers, Model
 from sklearn.preprocessing import LabelEncoder
 import mysql.connector
 from datetime import datetime
 from dotenv import load_dotenv
-
-# Suppress TensorFlow logging and progress bars
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-tf.config.set_visible_devices([], 'GPU')  # Disable GPU to avoid warnings
-tf.keras.utils.disable_interactive_logging()
-import logging
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
-
-# Context manager to suppress stdout
-class SuppressOutput:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
 
 # Database configuration from environment variables
 # Note: When called from Node.js, env vars are passed through system environment
@@ -43,7 +27,7 @@ DB_CONFIG = {
 }
 
 
-class ENCM(tf.keras.Model):
+class ENCM(keras.Model):
     def __init__(self, n_users, n_items, n_contexts, embedding_dim=50, context_dim=10, hidden_dims=[64, 32]):
         super(ENCM, self).__init__()
         self.n_users = n_users
@@ -51,14 +35,14 @@ class ENCM(tf.keras.Model):
         self.embedding_dim = embedding_dim
 
         # User and item embeddings
-        self.user_embedding = tf.keras.layers.Embedding(n_users, embedding_dim)
-        self.item_embedding = tf.keras.layers.Embedding(n_items, embedding_dim)
+        self.user_embedding = layers.Embedding(n_users, embedding_dim)
+        self.item_embedding = layers.Embedding(n_items, embedding_dim)
 
         # Context embeddings
         self.context_embeddings = []
         for i, n_context in enumerate(n_contexts):
             self.context_embeddings.append(
-                tf.keras.layers.Embedding(n_context, context_dim, name=f'context_{i}')
+                layers.Embedding(n_context, context_dim, name=f'context_{i}')
             )
 
         # Neural layers for processing interactions
@@ -66,12 +50,12 @@ class ENCM(tf.keras.Model):
         input_dim = embedding_dim * 2 + len(n_contexts) * context_dim
 
         for hidden_dim in hidden_dims:
-            self.hidden_layers.append(tf.keras.layers.Dense(hidden_dim, activation='relu'))
-            self.hidden_layers.append(tf.keras.layers.Dropout(0.2))
+            self.hidden_layers.append(layers.Dense(hidden_dim, activation='relu'))
+            self.hidden_layers.append(layers.Dropout(0.2))
             input_dim = hidden_dim
 
         # Output layer
-        self.output_layer = tf.keras.layers.Dense(1, activation='sigmoid')
+        self.output_layer = layers.Dense(1, activation='sigmoid')
 
     def call(self, inputs, training=None):
         user_ids, item_ids, context_features = inputs
@@ -102,7 +86,7 @@ class ENCM(tf.keras.Model):
         return prediction
 
 
-class LNCM(tf.keras.Model):
+class LNCM(keras.Model):
     def __init__(self, n_users, n_items, embedding_dim=50, hidden_dims=[64, 32]):
         super(LNCM, self).__init__()
         self.n_users = n_users
@@ -110,23 +94,23 @@ class LNCM(tf.keras.Model):
         self.embedding_dim = embedding_dim
 
         # User and item embeddings
-        self.user_embedding = tf.keras.layers.Embedding(n_users, embedding_dim)
-        self.item_embedding = tf.keras.layers.Embedding(n_items, embedding_dim)
+        self.user_embedding = layers.Embedding(n_users, embedding_dim)
+        self.item_embedding = layers.Embedding(n_items, embedding_dim)
 
         # Linear combination layer
-        self.linear_layer = tf.keras.layers.Dense(1, use_bias=True)
+        self.linear_layer = layers.Dense(1, use_bias=True)
 
         # Neural layers
         self.hidden_layers = []
         input_dim = embedding_dim * 2
 
         for hidden_dim in hidden_dims:
-            self.hidden_layers.append(tf.keras.layers.Dense(hidden_dim, activation='relu'))
-            self.hidden_layers.append(tf.keras.layers.Dropout(0.2))
+            self.hidden_layers.append(layers.Dense(hidden_dim, activation='relu'))
+            self.hidden_layers.append(layers.Dropout(0.2))
             input_dim = hidden_dim
 
         # Neural output layer
-        self.neural_layer = tf.keras.layers.Dense(1, activation='sigmoid')
+        self.neural_layer = layers.Dense(1, activation='sigmoid')
 
         # Combination weight
         self.alpha = self.add_weight(
@@ -156,7 +140,7 @@ class LNCM(tf.keras.Model):
         return output
 
 
-class NeuMF(tf.keras.Model):
+class NeuMF(keras.Model):
     def __init__(self, n_users, n_items, embedding_dim=50, hidden_dims=[64, 32, 16]):
         super(NeuMF, self).__init__()
         self.n_users = n_users
@@ -164,24 +148,24 @@ class NeuMF(tf.keras.Model):
         self.embedding_dim = embedding_dim
 
         # GMF (Generalized Matrix Factorization) embeddings
-        self.user_embedding_gmf = tf.keras.layers.Embedding(n_users, embedding_dim)
-        self.item_embedding_gmf = tf.keras.layers.Embedding(n_items, embedding_dim)
+        self.user_embedding_gmf = layers.Embedding(n_users, embedding_dim)
+        self.item_embedding_gmf = layers.Embedding(n_items, embedding_dim)
 
         # MLP (Multi-Layer Perceptron) embeddings
-        self.user_embedding_mlp = tf.keras.layers.Embedding(n_users, embedding_dim)
-        self.item_embedding_mlp = tf.keras.layers.Embedding(n_items, embedding_dim)
+        self.user_embedding_mlp = layers.Embedding(n_users, embedding_dim)
+        self.item_embedding_mlp = layers.Embedding(n_items, embedding_dim)
 
         # MLP layers
         self.mlp_layers = []
         input_dim = embedding_dim * 2
 
         for hidden_dim in hidden_dims:
-            self.mlp_layers.append(tf.keras.layers.Dense(hidden_dim, activation='relu'))
-            self.mlp_layers.append(tf.keras.layers.Dropout(0.2))
+            self.mlp_layers.append(layers.Dense(hidden_dim, activation='relu'))
+            self.mlp_layers.append(layers.Dropout(0.2))
             input_dim = hidden_dim
 
         # Final prediction layer (combines GMF and MLP)
-        self.final_layer = tf.keras.layers.Dense(1, activation='sigmoid')
+        self.final_layer = layers.Dense(1, activation='sigmoid')
 
     def call(self, inputs, training=None):
         user_ids, item_ids = inputs
@@ -209,7 +193,7 @@ class NeuMF(tf.keras.Model):
         return output
 
 
-class BMF(tf.keras.Model):
+class BMF(keras.Model):
     def __init__(self, n_users, n_items, embedding_dim=50):
         super(BMF, self).__init__()
         self.n_users = n_users
@@ -217,12 +201,12 @@ class BMF(tf.keras.Model):
         self.embedding_dim = embedding_dim
 
         # User and item embeddings
-        self.user_embedding = tf.keras.layers.Embedding(n_users, embedding_dim)
-        self.item_embedding = tf.keras.layers.Embedding(n_items, embedding_dim)
+        self.user_embedding = layers.Embedding(n_users, embedding_dim)
+        self.item_embedding = layers.Embedding(n_items, embedding_dim)
 
         # User and item biases
-        self.user_bias = tf.keras.layers.Embedding(n_users, 1)
-        self.item_bias = tf.keras.layers.Embedding(n_items, 1)
+        self.user_bias = layers.Embedding(n_users, 1)
+        self.item_bias = layers.Embedding(n_items, 1)
 
         # Global bias
         self.global_bias = self.add_weight(
@@ -421,18 +405,12 @@ class RecommendationSystem:
 
             # Convert to model indices
             try:
-                # Check if user_id exists in fitted data, otherwise use first available
-                user_id_int = int(user_id)
-                if user_id_int in self.encoders['user'].classes_:
-                    user_idx = self.encoders['user'].transform([user_id_int])[0]
-                else:
-                    # Use first user ID as fallback
-                    user_idx = 0
+                # Clamp user_id to valid range
+                clamped_user_id = max(1, min(self.data_stats['n_users'], user_id))
+                user_idx = self.encoders['user'].transform([clamped_user_id])[0]
 
-                # Filter item_ids to only those that exist in fitted data
-                valid_product_ids = [pid for pid in product_ids if pid in self.encoders['item'].classes_]
-                if not valid_product_ids:
-                    valid_product_ids = [self.encoders['item'].classes_[0]]  # fallback to first item
+                # Clamp item_ids to valid range
+                valid_product_ids = [max(1, min(self.data_stats['n_items'], pid)) for pid in product_ids]
                 item_indices = self.encoders['item'].transform(valid_product_ids)
             except Exception as e:
                 return {'ok': False, 'error': f'Encoding error: {e}'}
@@ -441,23 +419,121 @@ class RecommendationSystem:
             context = self.get_user_context(user_id, provided_context)
 
             # Prepare input data
-            n_items = len(valid_product_ids)
+            n_items = len(product_ids)
             user_indices = np.full(n_items, user_idx)
 
             if model_name == 'ENCM':
-                # Simple ENCM implementation for now
+                # For ENCM, we need context features as indices for embedding layers
                 context_features = []
-                for pid in valid_product_ids:
-                    # Use simple defaults for context features
-                    context_features.append([0, 0, 0, 1, 0, 3])  # category, brand, device, time, season, gender
+                preference_boost = []
+                for pid in product_ids:
+                    product = products_df[products_df['id'] == pid].iloc[0]
+
+                    # Encode all context features as indices for embedding layers
+                    # Order must match n_contexts in build_models()
+                    category_code = self.encoders['category'].transform([product['categoryId'] or 'unknown'])[0]
+                    brand_code = self.encoders['brand'].transform([product['brandId'] or 'unknown'])[0]
+                    device_code = self.encoders['device'].transform([context['device_type']])[0]
+
+                    # Context values are already encoded as 0,1,2,3 so they're valid indices
+                    time_of_day_code = max(0, min(3, int(context.get('time_of_day', 1))))  # 0-3
+                    season_code = max(0, min(3, int(context.get('season', 0))))           # 0-3
+                    gender_code = max(0, min(3, int(context.get('gender', 3))))           # 0-3
+
+                    context_features.append([
+                        category_code,      # 0: category
+                        brand_code,         # 1: brand
+                        device_code,        # 2: device_type
+                        time_of_day_code,   # 3: time_of_day
+                        season_code,        # 4: season
+                        gender_code         # 5: gender
+                    ])
+
+                    # Calculate preference boost with context awareness
+                    boost = 0.0
+
+                    # Seasonal boost (winter: coats, long pants, etc.)
+                    if context.get('season') == 0:  # winter
+                        winter_items = ['ao-khoac', 'quan-dai', 'dong-ho']  # coats, long pants, watches
+                        if product['categoryId'] in winter_items:
+                            boost += 0.15  # strong seasonal boost
+
+                    # Device type boost (mobile: cheaper items, desktop: variety)
+                    if context.get('device_type') == 'mobile':
+                        # Assume mobile users prefer cheaper/better discount items
+                        # This would need price data, for now just reduce boost
+                        boost -= 0.05  # slight penalty for mobile (prefer cheaper items)
+                    elif context.get('device_type') == 'desktop':
+                        # Desktop users can browse more, prefer variety
+                        boost += 0.05  # slight boost for variety
+
+                    # Time of day boost
+                    if context.get('time_of_day') == 1:  # morning - work/study items
+                        morning_items = ['ao-thun', 'quan-dai', 'giay']
+                        if product['categoryId'] in morning_items:
+                            boost += 0.08
+
+                    # Preferred categories and brands
+                    if context.get('preferred_categories') and product['categoryId'] in context['preferred_categories']:
+                        boost += 0.12  # boost for preferred category
+                    if context.get('preferred_brands') and product['brandId'] in context['preferred_brands']:
+                        boost += 0.12  # boost for preferred brand
+
+                    preference_boost.append(boost)
 
                 context_features = np.array(context_features)
-                with SuppressOutput():
-                    predictions = model.predict([user_indices, item_indices, context_features], batch_size=32, verbose=0)
+                preference_boost = np.array(preference_boost)
+
+                # Debug: check context features validity (will be in stderr)
+                import sys
+                print(f"DEBUG ENCM: context_features shape: {context_features.shape}", file=sys.stderr)
+                print(f"DEBUG ENCM: context_features sample: {context_features[:3]}", file=sys.stderr)
+                print(f"DEBUG ENCM: n_contexts: {[self.data_stats['n_categories'], self.data_stats['n_brands'], self.data_stats['n_devices'], self.data_stats['n_time_of_day'], self.data_stats['n_seasons'], self.data_stats['n_genders']]}", file=sys.stderr)
+
+                # Get predictions
+                predictions = model.predict([user_indices, item_indices, context_features], batch_size=32)
+
+                # Apply preference boost
+                predictions = predictions + preference_boost.reshape(-1, 1)
+
             else:
                 # For other models, just user-item pairs
-                with SuppressOutput():
-                    predictions = model.predict([user_indices, item_indices], batch_size=32, verbose=0)
+                predictions = model.predict([user_indices, item_indices], batch_size=32)
+
+                # Apply preference boost for non-ENCM models too
+                preference_boost = []
+                for pid in product_ids:
+                    product = products_df[products_df['id'] == pid].iloc[0]
+                    boost = 0.0
+
+                    # Seasonal boost for all models
+                    if context.get('season') == 0:  # winter
+                        winter_items = ['ao-khoac', 'quan-dai', 'dong-ho']
+                        if product['categoryId'] in winter_items:
+                            boost += 0.08
+
+                    # Device type boost
+                    if context.get('device_type') == 'mobile':
+                        boost -= 0.03
+                    elif context.get('device_type') == 'desktop':
+                        boost += 0.03
+
+                    # Time of day boost
+                    if context.get('time_of_day') == 1:  # morning
+                        morning_items = ['ao-thun', 'quan-dai', 'giay']
+                        if product['categoryId'] in morning_items:
+                            boost += 0.05
+
+                    # Preferred categories and brands
+                    if context.get('preferred_categories') and product['categoryId'] in context['preferred_categories']:
+                        boost += 0.06
+                    if context.get('preferred_brands') and product['brandId'] in context['preferred_brands']:
+                        boost += 0.06
+
+                    preference_boost.append(boost)
+
+                preference_boost = np.array(preference_boost)
+                predictions = predictions + preference_boost.reshape(-1, 1)
 
             # Get top recommendations
             predictions_flat = predictions.flatten()
@@ -465,7 +541,7 @@ class RecommendationSystem:
 
             recommendations = []
             for idx in top_indices:
-                product_id = valid_product_ids[idx]
+                product_id = product_ids[idx]
                 score = float(predictions_flat[idx])
                 product_row = products_df[products_df['id'] == product_id].iloc[0]
                 product_name = product_row['name']
@@ -484,7 +560,7 @@ class RecommendationSystem:
                 'context': context,
                 'model': model_name
             }
-        except Exception as e:
+    except Exception as e:
             return {'ok': False, 'error': str(e)}
 
 

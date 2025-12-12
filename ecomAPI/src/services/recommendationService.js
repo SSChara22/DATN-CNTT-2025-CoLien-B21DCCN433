@@ -2,6 +2,7 @@ import db from "../models/index";
 import fs from "fs";
 import path from "path";
 import moment from "moment";
+const { Op } = db.Sequelize;
 
 // Optional Python inference bridge (default export)
 let pythonInvoker = null;
@@ -182,30 +183,73 @@ async function buildUserProductFeatures(userId) {
 
 async function computeRecommendationsForUser(userId, limit=10) {
   // Try Python inference first: evaluate trained models and select best by MAP@10 then Precision@10
+  // Ground truth includes both cart and purchase interactions for better evaluation
   if (pythonInvoker) {
-    const gtPurch = await db.Interaction.findAll({ where: { userId, actionCode: 'purchase' }, attributes: ['productId'], raw: true });
-    const gtSet = new Set(gtPurch.map(r => r.productId));
+    // Use both purchase and cart as ground truth for evaluation
+    const gtInteractions = await db.Interaction.findAll({
+      where: {
+        userId,
+        actionCode: { [Op.in]: ['purchase', 'cart'] }
+      },
+      attributes: ['productId'],
+      raw: true
+    });
+    const gtSet = new Set(gtInteractions.map(r => r.productId));
     const nowCtx = deriveContext(new Date());
     const lastInter = await db.Interaction.findOne({ where: { userId }, order: [['timestamp','DESC']], raw: true });
+
+    // Get user information for richer context
+    const user = await db.User.findOne({ where: { id: userId }, raw: true });
+    const gender = user?.genderId || null;
+
+    // Get user's interaction history for preferences
+    const userInteractions = await db.Interaction.findAll({
+      where: { userId, actionCode: { [Op.in]: ['cart', 'purchase'] } },
+      include: [{ model: db.Product, as: 'productData', attributes: ['categoryId', 'brandId'] }],
+      raw: true, nest: true, limit: 50, order: [['timestamp', 'DESC']]
+    });
+
+    // Extract preferred categories and brands
+    const categoryPrefs = new Set();
+    const brandPrefs = new Set();
+    for (const inter of userInteractions) {
+      if (inter.productData?.categoryId) categoryPrefs.add(inter.productData.categoryId);
+      if (inter.productData?.brandId) brandPrefs.add(inter.productData.brandId);
+    }
+
     const ctxPayload = {
       time_of_day: nowCtx.time_of_day,
       season: nowCtx.season,
-      device_type: lastInter?.device_type || 'Mobile',
-      category: null
+      device_type: lastInter?.device_type || 'unknown',
+      gender: gender,
+      preferred_categories: Array.from(categoryPrefs),
+      preferred_brands: Array.from(brandPrefs),
+      category: null  // kept for backward compatibility
     };
+
     const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
     const k = Math.max(1, Math.min(10, limit));
-    // Run the 4 model inferences in parallel to reduce overall latency
-    const parallel = await Promise.all(
-      modelNames.map(async (name) => {
-        try {
-          const resp = await pythonInvoker.runPythonInference({ user_id: userId, limit: k, model: name, context: ctxPayload });
-          return { name, resp };
-        } catch (e) {
-          return { name, resp: { ok: false, error: e?.message || String(e) } };
-        }
-      })
-    );
+
+    // Run the 4 model inferences sequentially
+    const parallel = [];
+    for (const name of modelNames) {
+      try {
+        console.log(`[RECO] Calling model ${name}...`);
+        const resp = await pythonInvoker.runPythonInference({ user_id: userId, limit: k, model: name, context: ctxPayload });
+        console.log(`[RECO] Model ${name} response:`, {
+          ok: resp.ok,
+          hasItems: resp.items && Array.isArray(resp.items),
+          itemsLength: resp.items ? resp.items.length : 0,
+          error: resp.error
+        });
+        parallel.push({ name, resp });
+      } catch (e) {
+        console.log(`[RECO] Model ${name} exception:`, e);
+        parallel.push({ name, resp: { ok: false, error: e?.message || String(e) } });
+      }
+    }
+
+    console.log(`[RECO] All responses:`, parallel.map(p => ({ name: p.name, ok: p.resp.ok, error: p.resp.error })));
     const modelRuns = [];
     for (const { name, resp } of parallel) {
       let recs = [];
@@ -228,10 +272,27 @@ async function computeRecommendationsForUser(userId, limit=10) {
       return { bestModel: best.modelName, top: best.recommendations, modelRuns };
     }
     // fall through to heuristic if Python failed
+  } else {
+    console.log(`[RECO] Python invoker not available, falling back to heuristic`);
   }
+
+  console.log(`[RECO] Using heuristic recommendation approach`);
+
   // Generate multiple DB-scoring variants and choose best
   const perModelLimit = 10; // each model should output 10 items
   const base = await buildUserProductFeatures(userId);
+
+  // Use same ground truth as Python evaluation
+  const gtInteractions = await db.Interaction.findAll({
+    where: {
+      userId,
+      actionCode: { [Op.in]: ['purchase', 'cart'] }
+    },
+    attributes: ['productId'],
+    raw: true
+  });
+  const gtSet = new Set(gtInteractions.map(r => r.productId));
+
   const likedInter = await db.Interaction.findAll({
     where: { userId, actionCode: { [Op.in]: ['cart','purchase'] } },
     include: [{ model: db.Product, as: 'productData', attributes: ['id','categoryId','brandId'] }],
