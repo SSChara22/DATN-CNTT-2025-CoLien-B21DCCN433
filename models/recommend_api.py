@@ -44,26 +44,34 @@ DB_CONFIG = {
 
 
 class ENCM(tf.keras.Model):
-    def __init__(self, n_users, n_items, n_contexts, embedding_dim=50, context_dim=10, hidden_dims=[64, 32]):
+    def __init__(self, n_users, n_items, n_contexts, embedding_dim=50, context_dims=None, hidden_dims=[64, 32]):
         super(ENCM, self).__init__()
         self.n_users = n_users
         self.n_items = n_items
         self.embedding_dim = embedding_dim
 
+        # Use provided context_dims or default to uniform dimension
+        if context_dims is None:
+            context_dims = [10] * len(n_contexts)
+        elif len(context_dims) != len(n_contexts):
+            raise ValueError("context_dims must have same length as n_contexts")
+
         # User and item embeddings
         self.user_embedding = tf.keras.layers.Embedding(n_users, embedding_dim)
         self.item_embedding = tf.keras.layers.Embedding(n_items, embedding_dim)
 
-        # Context embeddings
+        # Context embeddings with variable dimensions
         self.context_embeddings = []
-        for i, n_context in enumerate(n_contexts):
+        total_context_dim = 0
+        for i, (n_context, context_dim) in enumerate(zip(n_contexts, context_dims)):
             self.context_embeddings.append(
                 tf.keras.layers.Embedding(n_context, context_dim, name=f'context_{i}')
             )
+            total_context_dim += context_dim
 
         # Neural layers for processing interactions
         self.hidden_layers = []
-        input_dim = embedding_dim * 2 + len(n_contexts) * context_dim
+        input_dim = embedding_dim * 2 + total_context_dim
 
         for hidden_dim in hidden_dims:
             self.hidden_layers.append(tf.keras.layers.Dense(hidden_dim, activation='relu'))
@@ -322,6 +330,49 @@ class RecommendationSystem:
         # Gender encoder (assuming M, FE, O, unknown)
         self.data_stats['n_genders'] = 4
 
+        # Hour encoder (0-23)
+        self.data_stats['n_hours'] = 24
+
+        # Month encoder (1-12)
+        self.data_stats['n_months'] = 12
+
+        # Day of week encoder (0-6: Monday-Sunday)
+        self.data_stats['n_days_of_week'] = 7
+
+        # Is weekend encoder (0-1)
+        self.data_stats['n_is_weekend'] = 2
+
+
+        # Price range encoder (assuming price ranges: 0-100k, 100k-500k, 500k-1M, 1M-5M, 5M+)
+        price_ranges = ['low', 'medium', 'high', 'premium', 'luxury']
+        self.encoders['price_range'] = LabelEncoder()
+        self.encoders['price_range'].fit(price_ranges)
+        self.data_stats['n_price_ranges'] = len(price_ranges)
+
+        # Discount percentage encoder (0-100%)
+        self.data_stats['n_discount_percentages'] = 101
+
+        # Product views encoder (log scale categories)
+        view_categories = ['very_low', 'low', 'medium', 'high', 'very_high']
+        self.encoders['product_views'] = LabelEncoder()
+        self.encoders['product_views'].fit(view_categories)
+        self.data_stats['n_product_views'] = len(view_categories)
+
+        # Rating encoder (1-5 stars, with 0.5 increments)
+        self.data_stats['n_ratings'] = 9  # 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0
+
+        # Rating count encoder (log scale categories)
+        rating_count_categories = ['very_few', 'few', 'moderate', 'many', 'very_many']
+        self.encoders['rating_count'] = LabelEncoder()
+        self.encoders['rating_count'].fit(rating_count_categories)
+        self.data_stats['n_rating_counts'] = len(rating_count_categories)
+
+        # Preferred categories encoder (same as category)
+        self.data_stats['n_preferred_categories'] = self.data_stats['n_categories']
+
+        # Preferred brands encoder (same as brand)
+        self.data_stats['n_preferred_brands'] = self.data_stats['n_brands']
+
     def build_models(self):
         """Build and initialize all models"""
         n_users = self.data_stats['n_users']
@@ -329,23 +380,118 @@ class RecommendationSystem:
 
         # Context dimensions for ENCM - must match order in context_features array
         n_contexts = [
-            self.data_stats['n_categories'],  # 0: category
-            self.data_stats['n_brands'],      # 1: brand
-            self.data_stats['n_devices'],     # 2: device_type
-            self.data_stats['n_time_of_day'], # 3: time_of_day (always 4)
-            self.data_stats['n_seasons'],     # 4: season (always 4)
-            self.data_stats['n_genders']      # 5: gender (always 4)
+            self.data_stats['n_categories'],          # 0: category
+            self.data_stats['n_brands'],              # 1: brand
+            self.data_stats['n_devices'],             # 2: device_type
+            self.data_stats['n_time_of_day'],         # 3: time_of_day (always 4)
+            self.data_stats['n_seasons'],             # 4: season (always 4)
+            self.data_stats['n_genders'],             # 5: gender (always 4)
+            self.data_stats['n_hours'],               # 6: hour (24)
+            self.data_stats['n_months'],              # 7: month (12)
+            self.data_stats['n_days_of_week'],        # 8: day_of_week (7)
+            self.data_stats['n_is_weekend'],          # 9: is_weekend (2)
+            self.data_stats['n_price_ranges'],        # 10: price_range (5)
+            self.data_stats['n_discount_percentages'], # 11: discount_percentage (101)
+            self.data_stats['n_product_views'],       # 12: product_views (5)
+            self.data_stats['n_ratings'],             # 13: rating (9)
+            self.data_stats['n_rating_counts'],       # 14: rating_count (5)
+            self.data_stats['n_preferred_categories'], # 15: preferred_categories
+            self.data_stats['n_preferred_brands']     # 16: preferred_brands
+        ]
+
+        # Context embedding dimensions - larger for important features
+        context_dims = [
+            15,  # 0: category - important for product categorization
+            15,  # 1: brand - important for brand preferences
+            8,   # 2: device_type - moderate importance
+            6,   # 3: time_of_day - basic time context
+            6,   # 4: season - seasonal patterns
+            6,   # 5: gender - demographic factor
+            20,  # 6: hour - detailed time patterns (important)
+            15,  # 7: month - monthly trends (important)
+            12,  # 8: day_of_week - weekly patterns (important)
+            4,   # 9: is_weekend - weekend vs weekday
+            12,  # 10: price_range - price sensitivity (important)
+            8,   # 11: discount_percentage - discount influence
+            18,  # 12: product_views - popularity indicator (important)
+            15,  # 13: rating - quality indicator (important)
+            12,  # 14: rating_count - reliability of rating (important)
+            25,  # 15: preferred_categories - user preferences (very important)
+            25   # 16: preferred_brands - user preferences (very important)
         ]
 
         # Build models
         self.models['BMF'] = BMF(n_users, n_items, embedding_dim=50)
         self.models['NeuMF'] = NeuMF(n_users, n_items, embedding_dim=50, hidden_dims=[64, 32, 16])
         self.models['LNCM'] = LNCM(n_users, n_items, embedding_dim=50, hidden_dims=[64, 32])
-        self.models['ENCM'] = ENCM(n_users, n_items, n_contexts, embedding_dim=50, context_dim=10, hidden_dims=[64, 32])
+        self.models['ENCM'] = ENCM(n_users, n_items, n_contexts, embedding_dim=50, context_dims=context_dims, hidden_dims=[64, 32])
 
         # Compile models
         for name, model in self.models.items():
             model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+    def _get_price_range_id(self, price):
+        """Convert price to price range category"""
+        if price <= 100000:
+            return 0  # low
+        elif price <= 500000:
+            return 1  # medium
+        elif price <= 1000000:
+            return 2  # high
+        elif price <= 5000000:
+            return 3  # premium
+        else:
+            return 4  # luxury
+
+    def _get_product_views_id(self, views):
+        """Convert product views to category"""
+        if views <= 10:
+            return 0  # very_low
+        elif views <= 100:
+            return 1  # low
+        elif views <= 1000:
+            return 2  # medium
+        elif views <= 10000:
+            return 3  # high
+        else:
+            return 4  # very_high
+
+    def _get_rating_count_id(self, count):
+        """Convert rating count to category"""
+        if count <= 5:
+            return 0  # very_few
+        elif count <= 50:
+            return 1  # few
+        elif count <= 500:
+            return 2  # moderate
+        elif count <= 5000:
+            return 3  # many
+        else:
+            return 4  # very_many
+
+    def _get_preferred_category_id(self, preferred_categories, product_category):
+        """Get encoded preferred category ID"""
+        if not preferred_categories or not product_category:
+            return 0
+        # If product category is in preferred categories, return its encoded ID
+        if product_category in preferred_categories:
+            try:
+                return self.encoders['category'].transform([product_category])[0]
+            except:
+                return 0
+        return 0
+
+    def _get_preferred_brand_id(self, preferred_brands, product_brand):
+        """Get encoded preferred brand ID"""
+        if not preferred_brands or not product_brand:
+            return 0
+        # If product brand is in preferred brands, return its encoded ID
+        if product_brand in preferred_brands:
+            try:
+                return self.encoders['brand'].transform([product_brand])[0]
+            except:
+                return 0
+        return 0
 
     def get_user_context(self, user_id, provided_context=None):
         """Get current context for user, merging with provided context"""
@@ -386,12 +532,18 @@ class RecommendationSystem:
                 now = datetime.now()
                 hour = now.hour
                 month = now.month
+                day_of_week = now.weekday()  # 0=Monday, 6=Sunday
+                is_weekend = 1 if day_of_week >= 5 else 0
+
                 time_of_day = 0 if hour < 6 else (1 if hour < 12 else (2 if hour < 18 else 3))
                 season = 0 if month <= 2 or month == 12 else (1 if month <= 5 else (2 if month <= 8 else 3))
+
                 context['time_of_day'] = context.get('time_of_day', time_of_day)
                 context['season'] = context.get('season', season)
                 context['hour'] = context.get('hour', hour)
-                context['month'] = context.get('month', month)
+                context['month'] = context.get('month', month - 1)  # 0-based for encoding
+                context['day_of_week'] = context.get('day_of_week', day_of_week)
+                context['is_weekend'] = context.get('is_weekend', is_weekend)
 
             return context
 
@@ -404,14 +556,66 @@ class RecommendationSystem:
                 'preferred_categories': [],
                 'preferred_brands': [],
                 'hour': 12,
-                'month': 6
+                'month': 5,        # June (0-based)
+                'day_of_week': 0,  # Monday
+                'is_weekend': 0    # weekday
             }
+
+    def _sanitize_context(self, context):
+        """Sanitize and convert context values to proper types"""
+        if not context:
+            return {}
+
+        sanitized = {}
+
+        # Time of day conversion
+        time_of_day_map = {'night': 0, 'morning': 1, 'afternoon': 2, 'evening': 3}
+        if 'time_of_day' in context:
+            tod = context['time_of_day']
+            if isinstance(tod, str):
+                sanitized['time_of_day'] = time_of_day_map.get(tod.lower(), 1)  # default to morning
+            else:
+                sanitized['time_of_day'] = int(tod)
+
+        # Season conversion
+        season_map = {'winter': 0, 'spring': 1, 'summer': 2, 'autumn': 3}
+        if 'season' in context:
+            season = context['season']
+            if isinstance(season, str):
+                sanitized['season'] = season_map.get(season.lower(), 2)  # default to summer
+            else:
+                sanitized['season'] = int(season)
+
+        # Convert other integer fields
+        int_fields = ['gender', 'hour', 'month', 'day_of_week', 'is_weekend']
+        for field in int_fields:
+            if field in context:
+                try:
+                    sanitized[field] = int(context[field])
+                except (ValueError, TypeError):
+                    pass  # skip invalid values
+
+        # Copy string/list fields as-is
+        str_fields = ['device_type']
+        for field in str_fields:
+            if field in context:
+                sanitized[field] = str(context[field])
+
+        list_fields = ['preferred_categories', 'preferred_brands']
+        for field in list_fields:
+            if field in context and isinstance(context[field], list):
+                sanitized[field] = context[field]
+
+        return sanitized
 
     def get_recommendations(self, user_id, model_name, limit=10, provided_context=None):
         """Get recommendations for a user using specified model"""
         try:
             if model_name not in self.models:
                 return {'ok': False, 'error': f'Model {model_name} not found'}
+
+            # Sanitize provided context
+            provided_context = self._sanitize_context(provided_context)
 
             model = self.models[model_name]
 
@@ -445,13 +649,137 @@ class RecommendationSystem:
             user_indices = np.full(n_items, user_idx)
 
             if model_name == 'ENCM':
-                # Simple ENCM implementation for now
+                # Get product details from products table
+                product_details_query = f"""
+                    SELECT id, name, categoryId, brandId, view as product_views
+                    FROM products
+                    WHERE id IN ({','.join(map(str, valid_product_ids))})
+                """
+                products_df = pd.read_sql(product_details_query, self.db_connection)
+
+                # Get price details from productdetails table
+                price_details_query = f"""
+                    SELECT productId, originalPrice, discountPrice
+                    FROM productdetails
+                    WHERE productId IN ({','.join(map(str, valid_product_ids))})
+                """
+                price_details_df = pd.read_sql(price_details_query, self.db_connection)
+
+                # Get interaction statistics for rating and rating_count
+                interaction_stats_query = f"""
+                    SELECT productId,
+                           COUNT(*) as total_interactions,
+                           COUNT(CASE WHEN actionCode = 'view' THEN 1 END) as view_count,
+                           COUNT(CASE WHEN actionCode = 'cart' THEN 1 END) as cart_count,
+                           COUNT(CASE WHEN actionCode = 'purchase' THEN 1 END) as purchase_count
+                    FROM interactions
+                    WHERE productId IN ({','.join(map(str, valid_product_ids))})
+                    GROUP BY productId
+                """
+                interaction_stats_df = pd.read_sql(interaction_stats_query, self.db_connection)
+
+                # Get current date/time context
+                now = datetime.now()
+                current_hour = now.hour
+                current_month = now.month
+                current_day_of_week = now.weekday()  # 0=Monday, 6=Sunday
+                current_is_weekend = 1 if current_day_of_week >= 5 else 0
+                current_date = now.day
+                current_day_name = now.strftime('%A')
+
                 context_features = []
                 for pid in valid_product_ids:
-                    # Use simple defaults for context features
-                    context_features.append([0, 0, 0, 1, 0, 3])  # category, brand, device, time, season, gender
+                    # Get product data from products table
+                    product_row = products_df[products_df['id'] == pid]
+                    prod = product_row.iloc[0] if not product_row.empty else None
 
-                context_features = np.array(context_features)
+                    # Get price data from productdetails table
+                    price_row = price_details_df[price_details_df['productId'] == pid]
+                    price_data = price_row.iloc[0] if not price_row.empty else None
+
+                    # Get interaction stats
+                    stats_row = interaction_stats_df[interaction_stats_df['productId'] == pid]
+                    stats = stats_row.iloc[0] if not stats_row.empty else None
+
+                    if prod is not None:
+                        # Encode category and brand
+                        category_id = self.encoders['category'].transform([prod['categoryId'] or 'unknown'])[0] if prod['categoryId'] else 0
+                        brand_id = self.encoders['brand'].transform([prod['brandId'] or 'unknown'])[0] if prod['brandId'] else 0
+
+                        # Device type from context
+                        device_type_id = self.encoders['device'].transform([context.get('device_type', 'unknown')])[0]
+
+                        # Time context
+                        time_of_day = context.get('time_of_day', current_hour // 6)
+                        season = context.get('season', (current_month - 1) // 3)
+
+                        # Gender
+                        gender_id = context.get('gender', 3)
+
+                        # Detailed time features
+                        hour_id = context.get('hour', current_hour)
+                        month_id = context.get('month', current_month - 1)  # 0-based
+                        day_of_week_id = context.get('day_of_week', current_day_of_week)
+                        is_weekend_id = context.get('is_weekend', current_is_weekend)
+
+                        # Product attributes from database
+                        # Price from productdetails (use discountPrice if available, else originalPrice)
+                        price = 0
+                        discount_percentage = 0
+                        if price_data is not None:
+                            original_price = price_data['originalPrice'] or 0
+                            discount_price = price_data['discountPrice'] or original_price
+                            price = discount_price
+                            if original_price > 0:
+                                discount_percentage = min(100, int(((original_price - discount_price) / original_price) * 100))
+
+                        price_range_id = self._get_price_range_id(price)
+                        discount_percentage_id = discount_percentage
+
+                        # Product views from products table
+                        product_views = prod['product_views'] or 0
+                        product_views_id = self._get_product_views_id(product_views)
+
+                        # Rating and rating_count from interactions (derived metrics)
+                        rating = 0.0
+                        rating_count = 0
+
+                        if stats is not None:
+                            total_interactions = stats['total_interactions'] or 0
+                            cart_count = stats['cart_count'] or 0
+                            purchase_count = stats['purchase_count'] or 0
+
+                            # Use purchase-to-cart ratio as proxy for rating (higher ratio = higher rating)
+                            if cart_count > 0:
+                                purchase_ratio = purchase_count / cart_count
+                                rating = min(5.0, 2.0 + (purchase_ratio * 3.0))  # Scale 2.0-5.0
+                            elif purchase_count > 0:
+                                rating = 4.0  # Default good rating if purchases exist
+
+                            rating_count = purchase_count  # Use purchase count as rating count
+
+                        rating_id = max(0, min(8, int((rating - 1) * 2)))  # Convert to 0-8 scale
+                        rating_count_id = self._get_rating_count_id(rating_count)
+
+                        # Preferred categories and brands
+                        preferred_categories = context.get('preferred_categories', [])
+                        preferred_category_id = self._get_preferred_category_id(preferred_categories, prod['categoryId'])
+
+                        preferred_brands = context.get('preferred_brands', [])
+                        preferred_brand_id = self._get_preferred_brand_id(preferred_brands, prod['brandId'])
+
+                        context_feature = [
+                            category_id, brand_id, device_type_id, time_of_day, season, gender_id,
+                            hour_id, month_id, day_of_week_id, is_weekend_id,
+                            price_range_id, discount_percentage_id, product_views_id, rating_id, rating_count_id,
+                            preferred_category_id, preferred_brand_id
+                        ]
+                        context_features.append(context_feature)
+                    else:
+                        # Default values if product not found
+                        context_features.append([0] * 17)
+
+                context_features = np.array(context_features, dtype=np.int32)
                 with SuppressOutput():
                     predictions = model.predict([user_indices, item_indices, context_features], batch_size=32, verbose=0)
             else:
