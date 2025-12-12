@@ -211,12 +211,12 @@ def train_encm_model(train_context_ds, test_context_ds, n_users, n_items, n_cont
 
     # Context dimensions - match actual number of classes
     context_dims = [
-        len(context_encoders['category'].classes_),  # categories (8)
-        len(context_encoders['brand'].classes_),     # brands (6)
-        len(context_encoders['device'].classes_),    # devices (3)
+        len(context_encoders['category'].classes_),  # categories
+        len(context_encoders['brand'].classes_),     # brands
+        len(context_encoders['device'].classes_),    # devices
         4,  # time_of_day
         4,  # season
-        4,  # gender
+        4,  # gender (M, FE, O, unknown -> 0, 1, 2, 3)
         24, # hour
         12, # month (0-11)
         7,  # day_of_week
