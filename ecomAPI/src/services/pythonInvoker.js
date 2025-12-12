@@ -3,7 +3,7 @@ import path from 'path';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const PYTHON = process.env.PYTHON_BIN || 'C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python310\\python.exe';
-const SCRIPT = path.join(ROOT, 'models', 'recommend_api.py');
+const SCRIPT = path.join(ROOT, 'models', 'recommend_api_trained.py');
 
 function runPythonInference(payload, { timeoutMs = 120000 } = {}) { // 2 minutes
   return new Promise((resolve) => {
@@ -30,7 +30,7 @@ function runPythonInference(payload, { timeoutMs = 120000 } = {}) { // 2 minutes
       });
 
       // Use the full recommendation system
-      const scriptPath = path.join(ROOT, 'models', 'recommend_api.py');
+      const scriptPath = SCRIPT;
 
       const ps = spawn(PYTHON, ['-u', scriptPath], { cwd: ROOT, env });
       let out = '';
