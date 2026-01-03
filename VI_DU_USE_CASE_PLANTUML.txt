@@ -1,0 +1,113 @@
+@startuml
+skinparam usecase {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam actor {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam package {
+    BackgroundColor #F0F0F0
+    BorderColor #666666
+    FontColor #000000
+}
+
+skinparam arrow {
+    Color #0066CC
+    Thickness 2
+}
+
+actor Admin
+
+' Use cases chính
+usecase "Đăng nhập" as Login
+usecase "Đăng xuất" as Logout
+
+' Quản lý người dùng
+usecase "Quản lý người dùng" as UserMgmt
+usecase "Tìm kiếm người dùng" as SearchUser
+usecase "Thêm người dùng" as AddUser
+usecase "Sửa người dùng" as EditUser
+usecase "Xóa người dùng" as DeleteUser
+usecase "Xem thông tin người dùng" as ViewUser
+usecase "Phân quyền" as AssignRole
+
+' Quản lý danh mục
+usecase "Quản lý tất cả danh mục" as CategoryMgmt
+usecase "Tìm kiếm dữ liệu" as SearchData
+usecase "Thêm dữ liệu" as AddData
+usecase "Sửa dữ liệu" as EditData
+usecase "Xóa dữ liệu" as DeleteData
+usecase "Xem thông tin dữ liệu" as ViewData
+
+' Quản lý đơn hàng
+usecase "Quản lý đơn hàng" as OrderMgmt
+usecase "Tìm kiếm đơn hàng" as SearchOrder
+usecase "Xem thông tin đơn hàng" as ViewOrder
+usecase "Cập nhật trạng thái đơn hàng" as UpdateOrderStatus
+
+' Quản lý nhập hàng
+usecase "Quản lý nhập hàng" as ReceiptMgmt
+usecase "Tìm kiếm đơn nhập hàng" as SearchReceipt
+usecase "Thêm đơn nhập hàng" as AddReceipt
+usecase "Sửa đơn nhập hàng" as EditReceipt
+usecase "Xem thông tin đơn nhập hàng" as ViewReceipt
+
+' Quản lý tin nhắn
+usecase "Quản lý tin nhắn" as MessageMgmt
+usecase "Tìm kiếm hội thoại" as SearchConversation
+usecase "Trả lời tin nhắn" as ReplyMessage
+
+' Thống kê
+usecase "Thống kê" as Statistics
+usecase "Xem dữ liệu thống kê" as ViewStatistics
+
+' Quan hệ trực tiếp từ Admin
+Admin --> Login
+Admin --> Logout
+
+' Quan hệ include: Tất cả use case quản lý đều include Đăng nhập
+Login <.. UserMgmt : <<include>>
+Login <.. CategoryMgmt : <<include>>
+Login <.. OrderMgmt : <<include>>
+Login <.. ReceiptMgmt : <<include>>
+Login <.. MessageMgmt : <<include>>
+Login <.. Statistics : <<include>>
+
+' Quan hệ extend: Extended use cases extend từ main use cases
+UserMgmt <.. SearchUser : <<extend>>
+UserMgmt <.. AddUser : <<extend>>
+UserMgmt <.. EditUser : <<extend>>
+UserMgmt <.. DeleteUser : <<extend>>
+UserMgmt <.. ViewUser : <<extend>>
+UserMgmt <.. AssignRole : <<extend>>
+
+CategoryMgmt <.. SearchData : <<extend>>
+CategoryMgmt <.. AddData : <<extend>>
+CategoryMgmt <.. EditData : <<extend>>
+CategoryMgmt <.. DeleteData : <<extend>>
+CategoryMgmt <.. ViewData : <<extend>>
+
+OrderMgmt <.. SearchOrder : <<extend>>
+OrderMgmt <.. ViewOrder : <<extend>>
+OrderMgmt <.. UpdateOrderStatus : <<extend>>
+
+ReceiptMgmt <.. SearchReceipt : <<extend>>
+ReceiptMgmt <.. AddReceipt : <<extend>>
+ReceiptMgmt <.. EditReceipt : <<extend>>
+ReceiptMgmt <.. ViewReceipt : <<extend>>
+
+MessageMgmt <.. SearchConversation : <<extend>>
+MessageMgmt <.. ReplyMessage : <<extend>>
+
+Statistics <.. ViewStatistics : <<extend>>
+
+@enduml
+

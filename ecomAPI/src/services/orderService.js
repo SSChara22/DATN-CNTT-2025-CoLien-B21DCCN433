@@ -242,6 +242,10 @@ let updateStatusOrder = (data) => {
                     raw: false,
                 });
                 order.statusId = data.statusId;
+                // Nếu shipper nhận đơn (chuyển sang S5) và đơn hàng chưa có shipper, gán shipperId
+                if (data.statusId === "S5" && data.shipperId && !order.shipperId) {
+                    order.shipperId = data.shipperId;
+                }
                 await order.save();
                 // cong lai stock khi huy don
                 if (
@@ -374,7 +378,39 @@ let getAllOrdersByUser = (userId) => {
 let getAllOrdersByShipper = (data) => {
     return new Promise(async (resolve, reject) => {
         try {
-            console.log(data.shipperId);
+            let whereCondition = {};
+            
+            // Nếu có filter "available", lấy các đơn chưa có shipper và đang ở trạng thái S3 hoặc S4
+            if (data.status === 'available') {
+                whereCondition = {
+                    shipperId: null,
+                    statusId: { [Op.in]: ['S3', 'S4'] }
+                };
+            } else if (data.status === 'working') {
+                // Đơn hàng đang giao (S5) của shipper này
+                whereCondition = {
+                    shipperId: data.shipperId,
+                    statusId: 'S5'
+                };
+            } else if (data.status === 'done') {
+                // Đơn hàng đã giao (S6) của shipper này
+                whereCondition = {
+                    shipperId: data.shipperId,
+                    statusId: 'S6'
+                };
+            } else {
+                // Mặc định: lấy tất cả đơn hàng của shipper này HOẶC đơn hàng chưa có shipper
+                whereCondition = {
+                    [Op.or]: [
+                        { shipperId: data.shipperId },
+                        { 
+                            shipperId: null,
+                            statusId: { [Op.in]: ['S3', 'S4'] }
+                        }
+                    ]
+                };
+            }
+
             let objectFilter = {
                 include: [
                     { model: db.TypeShip, as: "typeShipData" },
@@ -384,13 +420,8 @@ let getAllOrdersByShipper = (data) => {
                 order: [["createdAt", "DESC"]],
                 raw: true,
                 nest: true,
-                where: { shipperId: data.shipperId },
+                where: whereCondition,
             };
-
-            if (data.status && data.status == "working")
-                objectFilter.where = { ...objectFilter.where, statusId: "S5" };
-            if (data.status && data.status == "done")
-                objectFilter.where = { ...objectFilter.where, statusId: "S6" };
 
             let res = await db.OrderProduct.findAll(objectFilter);
 
@@ -410,11 +441,6 @@ let getAllOrdersByShipper = (data) => {
             resolve({
                 errCode: 0,
                 data: res,
-            });
-
-            resolve({
-                errCode: 0,
-                data: addressUser,
             });
         } catch (error) {
             reject(error);

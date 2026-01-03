@@ -37,8 +37,8 @@ CONTEXT_INFO_PKL = os.path.join(PROC_DIR, 'context_info.pkl')
 DB_HOST = os.getenv('DB_HOST', '127.0.0.1')
 DB_PORT = int(os.getenv('DB_PORT', '3306'))
 DB_USER = os.getenv('DB_USER', 'root')
-DB_PASS = os.getenv('DB_PASS', '')
-DB_NAME = os.getenv('DB_NAME', 'ecom')
+DB_PASS = os.getenv('DB_PASS', '12345678')
+DB_NAME = os.getenv('DB_NAME', 'demo')
 
 
 def load_pickle(path: str):

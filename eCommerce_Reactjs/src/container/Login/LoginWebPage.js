@@ -55,6 +55,8 @@ const LoginWebPage = () => {
 
             if (res.user.roleId === "R1" || res.user.roleId === "R4") {
                 window.location.href = "/admin";
+            } else if (res.user.roleId === "R3") {
+                window.location.href = "/shipper";
             } else {
                 window.location.href = "/";
             }
@@ -82,6 +84,8 @@ const LoginWebPage = () => {
 
             if (res.user.roleId === "R1" || res.user.roleId === "R4") {
                 window.location.href = "/admin";
+            } else if (res.user.roleId === "R3") {
+                window.location.href = "/shipper";
             } else {
                 window.location.href = "/";
             }

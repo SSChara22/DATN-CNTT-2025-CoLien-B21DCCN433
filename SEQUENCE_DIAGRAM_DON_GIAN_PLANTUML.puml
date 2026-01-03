@@ -1,0 +1,288 @@
+@startuml
+skinparam sequenceMessageAlign center
+skinparam roundcorner 15
+skinparam maxmessagesize 60
+skinparam sequenceParticipant underline
+skinparam shadowing true
+
+skinparam participant {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam actor {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam box {
+    BackgroundColor #F0F0F0
+    BorderColor #666666
+    FontColor #000000
+}
+
+skinparam note {
+    BackgroundColor #FFFFCC
+    BorderColor #CCCC00
+    FontColor #000000
+}
+
+skinparam arrow {
+    Color #0066CC
+    Thickness 2
+}
+
+skinparam database {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+}
+
+title Biểu đồ tuần tự - Hệ thống gợi ý sản phẩm\nKiến trúc: MVC + Service Layer + ML Service
+
+actor User
+
+box "PRESENTATION LAYER" #F0F0F0
+participant "React Component" as Frontend
+end box
+
+box "ROUTING LAYER" #F0F0F0
+participant "Express Router" as Route
+end box
+
+box "MIDDLEWARE LAYER" #F0F0F0
+participant "JWT Middleware" as Middleware
+end box
+
+box "CONTROLLER LAYER" #F0F0F0
+participant "RecommendationController" as Controller
+end box
+
+box "SERVICE LAYER" #F0F0F0
+participant "RecommendationService" as Service
+end box
+
+box "ML SERVICE LAYER" #F0F0F0
+participant "Python Invoker" as PythonInvoker
+participant "Python ML Service" as PythonService
+end box
+
+box "DATA ACCESS LAYER" #F0F0F0
+participant "Sequelize Models" as Model
+end box
+
+database "MySQL Database" as Database
+
+== 1. KHỞI TẠO GỢI Ý ==
+
+User -> Frontend: Click "Khởi tạo gợi ý"
+activate Frontend
+
+Frontend -> Route: POST /api/recommend/init?limit=10
+activate Route
+
+Route -> Middleware: verifyTokenUser()
+activate Middleware
+Middleware -> Database: Verify user
+activate Database
+Database --> Middleware: User data
+deactivate Database
+
+alt Token valid
+    Middleware --> Route: next()
+else Token invalid
+    Middleware --> Route: 403 Forbidden
+    Route --> Frontend: Error
+    Frontend --> User: Hiển thị lỗi
+end
+deactivate Middleware
+
+Route -> Controller: initForCurrentUser()
+activate Controller
+
+Controller -> Service: initForUser(userId, limit)
+activate Service
+
+Service -> Service: Clear old cache
+Service -> Service: computeRecommendationsForUser()
+
+== 2. PYTHON ML INFERENCE ==
+
+alt Python available
+    note right of Service
+    Parallel Processing
+    4 models: ENCM, LNCM, NeuMF, BMF
+    end note
+    
+    par ENCM
+        Service -> PythonInvoker: runPythonInference(ENCM)
+        activate PythonInvoker
+        PythonInvoker -> PythonService: spawn Python process
+        activate PythonService
+        PythonService -> Database: Load encoders
+        activate Database
+        Database --> PythonService: Encoders
+        deactivate Database
+        PythonService -> PythonService: Load model, predict, Top-K
+        PythonService --> PythonInvoker: ENCM results
+        deactivate PythonService
+        PythonInvoker --> Service: Results
+        deactivate PythonInvoker
+    and LNCM
+        Service -> PythonInvoker: runPythonInference(LNCM)
+        activate PythonInvoker
+        PythonInvoker -> PythonService: spawn Python process
+        activate PythonService
+        PythonService -> PythonService: Load model, predict
+        PythonService --> PythonInvoker: LNCM results
+        deactivate PythonService
+        PythonInvoker --> Service: Results
+        deactivate PythonInvoker
+    and NeuMF
+        Service -> PythonInvoker: runPythonInference(NeuMF)
+        activate PythonInvoker
+        PythonInvoker -> PythonService: spawn Python process
+        activate PythonService
+        PythonService -> PythonService: Load model, predict
+        PythonService --> PythonInvoker: NeuMF results
+        deactivate PythonService
+        PythonInvoker --> Service: Results
+        deactivate PythonInvoker
+    and BMF
+        Service -> PythonInvoker: runPythonInference(BMF)
+        activate PythonInvoker
+        PythonInvoker -> PythonService: spawn Python process
+        activate PythonService
+        PythonService -> PythonService: Load model, predict
+        PythonService --> PythonInvoker: BMF results
+        deactivate PythonService
+        PythonInvoker --> Service: Results
+        deactivate PythonInvoker
+    end
+    
+    Service -> Service: Evaluate models\nSelect best (MAP10, Precision10)
+    
+else Python not available
+    note right of Service
+    Fallback Strategy
+    Heuristic scoring
+    end note
+    
+    Service -> Model: Get products, interactions, comments
+    activate Model
+    Model -> Database: SELECT products, interactions, comments
+    activate Database
+    Database --> Model: Data
+    deactivate Database
+    Model --> Service: Features
+    deactivate Model
+    
+    Service -> Service: Calculate heuristic score\nSort and select top-K
+end
+
+== 3. LƯU CACHE ==
+
+Service -> Model: Recommendation.create()
+activate Model
+Model -> Database: INSERT INTO recommendations
+activate Database
+Database --> Model: Success
+deactivate Database
+Model --> Service: Created
+deactivate Model
+
+Service --> Controller: bestModel, top
+deactivate Service
+
+Controller --> Route: res.status(200).json(response)
+Route --> Frontend: Success response
+Frontend --> User: Hiển thị thành công
+
+deactivate Controller
+deactivate Route
+deactivate Frontend
+
+== 4. LẤY DANH SÁCH GỢI Ý ==
+
+User -> Frontend: Click "Xem gợi ý"
+activate Frontend
+
+Frontend -> Route: GET /api/recommend/list?limit=10
+activate Route
+
+Route -> Middleware: verifyTokenUser()
+activate Middleware
+Middleware -> Database: Verify user
+activate Database
+Database --> Middleware: User valid
+deactivate Database
+Middleware --> Route: next()
+deactivate Middleware
+
+Route -> Controller: listForCurrentUser()
+activate Controller
+
+Controller -> Service: getCachedForUser(userId, limit)
+activate Service
+
+Service -> Model: Recommendation.findAll()
+activate Model
+Model -> Database: SELECT FROM recommendations\nWHERE userId = ? ORDER BY score DESC
+activate Database
+Database --> Model: Cached recommendations
+deactivate Database
+Model --> Service: Recommendations
+deactivate Model
+
+Service --> Controller: Recommendations
+deactivate Service
+
+loop For each recommendation
+    Controller -> Model: Product.findOne()
+    activate Model
+    Model -> Database: SELECT FROM products WHERE id = ?
+    activate Database
+    Database --> Model: Product data
+    deactivate Database
+    Model --> Controller: Product
+    deactivate Model
+end
+
+Controller --> Route: res.status(200).json(response)
+Route --> Frontend: JSON response
+Frontend --> User: Hiển thị danh sách gợi ý
+
+deactivate Controller
+deactivate Route
+deactivate Frontend
+
+note over User, Database
+KIẾN TRÚC PHẦN MỀM:
+
+1. MVC Pattern
+   - Controller: recommendationController.js
+   - Model: Sequelize ORM
+   - View: React components
+
+2. Service Layer Pattern
+   - recommendationService.js
+
+3. Bridge Pattern
+   - pythonInvoker.js
+
+4. Repository Pattern
+   - Sequelize ORM
+
+5. Strategy Pattern
+   - 4 models: ENCM, LNCM, NeuMF, BMF
+
+6. Lazy Loading Pattern
+   - Python models cache
+end note
+
+@enduml
+

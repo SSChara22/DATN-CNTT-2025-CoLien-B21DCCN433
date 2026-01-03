@@ -1,0 +1,299 @@
+@startuml
+skinparam sequenceMessageAlign center
+skinparam roundcorner 15
+skinparam maxmessagesize 60
+skinparam sequenceParticipant underline
+skinparam shadowing true
+
+' Màu sắc giống Visual Paradigm
+skinparam participant {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam actor {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam box {
+    BackgroundColor #F0F0F0
+    BorderColor #666666
+    FontColor #000000
+}
+
+skinparam note {
+    BackgroundColor #FFFFCC
+    BorderColor #CCCC00
+    FontColor #000000
+}
+
+skinparam arrow {
+    Color #0066CC
+    Thickness 2
+}
+
+skinparam database {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+}
+
+title Biểu đồ tuần tự - Hệ thống gợi ý sản phẩm E-commerce\n(MVC Pattern với Service Layer)
+
+actor "User" as User
+participant "Frontend\n(React)" as Frontend
+participant "Route Layer\n(Express Router)" as Route
+participant "Middleware\n(jwtVerify)" as Middleware
+participant "Controller\n(recommendationController)" as Controller
+participant "Service Layer\n(recommendationService)" as Service
+participant "Python Invoker\n(pythonInvoker)" as PythonInvoker
+participant "Python ML Service\n(recommend_api.py)" as PythonService
+participant "Model Layer\n(Sequelize ORM)" as Model
+database "MySQL Database" as Database
+
+== Authentication & Request Routing ==
+
+User -> Frontend: Click "Xem gợi ý"
+activate Frontend
+Frontend -> Route: HTTP GET /api/recommendations/list?limit=10\nAuthorization: Bearer <token>
+activate Route
+
+Route -> Middleware: verifyTokenUser(req, res, next)
+activate Middleware
+Middleware -> Database: SELECT * FROM users WHERE id = ?\n(Verify JWT token payload)
+activate Database
+Database --> Middleware: User data
+deactivate Database
+
+alt Token valid && User exists
+    Middleware -> Middleware: Attach user to req.user
+    Middleware --> Route: next() (continue)
+else Token invalid or User not found
+    Middleware --> Route: res.status(403).json({error})
+    Route --> Frontend: Error response
+    Frontend --> User: Display error
+    deactivate Middleware
+    deactivate Route
+    deactivate Frontend
+    stop
+end
+deactivate Middleware
+
+== Controller Processing ==
+
+Route -> Controller: listForCurrentUser(req, res)
+activate Controller
+Controller -> Controller: Extract userId from req.user.id\nExtract limit from req.query.limit
+
+== Service Layer - Check Cache ==
+
+Controller -> Service: getCachedForUser(userId, limit)
+activate Service
+Service -> Service: ensureTables() (check/create tables)
+
+Service -> Model: Recommendation.findAll({\n  where: { userId },\n  order: [['score', 'DESC']],\n  limit: limit\n})
+activate Model
+Model -> Database: SELECT * FROM recommendations\nWHERE userId = ?\nORDER BY score DESC\nLIMIT ?
+activate Database
+Database --> Model: Recommendations array
+deactivate Database
+Model --> Service: Cached recommendations
+deactivate Model
+
+alt Cache exists && not empty
+    Service --> Controller: Return cached recommendations
+    deactivate Service
+    
+    == Hydrate Product Information ==
+    
+    loop For each recommendation
+        Controller -> Model: Product.findOne({ where: { id: productId } })
+        activate Model
+        Model -> Database: SELECT * FROM products WHERE id = ?
+        activate Database
+        Database --> Model: Product data
+        deactivate Database
+        Model --> Controller: Product object
+        deactivate Model
+    end
+    
+    Controller -> Controller: Build response: { errCode: 0, data: [...] }
+    Controller --> Route: res.status(200).json(response)
+    Route --> Frontend: JSON response
+    Frontend --> User: Display recommendations
+    deactivate Controller
+    deactivate Route
+    deactivate Frontend
+    stop
+
+else No cache or cache expired
+    Service -> Service: computeRecommendationsForUser(userId, limit)
+    
+    == Python ML Inference ==
+    
+    alt Python Invoker available
+        Service -> Service: Get ground truth purchases\nDerive context (time, season, device)
+        
+        par Run 4 models in parallel
+            Service -> PythonInvoker: runPythonInference({\n  user_id: userId,\n  limit: k,\n  model: 'ENCM',\n  context: {...}\n})
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn('python', ['recommend_api.py'])\nSend JSON via stdin
+            activate PythonService
+            
+            PythonService -> Database: SELECT original_id, idx\nFROM rec_user_encoder
+            activate Database
+            Database --> PythonService: User encoder mapping
+            deactivate Database
+            
+            PythonService -> Database: SELECT idx, original_id\nFROM rec_item_encoder e\nJOIN products p ON p.id = e.original_id\nWHERE p.statusId = 'S1'
+            activate Database
+            Database --> PythonService: Active items mapping
+            deactivate Database
+            
+            PythonService -> PythonService: Encode user_id → user_idx\nEncode item_ids → item_indices\nBuild context features
+            
+            PythonService -> PythonService: _build_model('ENCM')\nLoad config from encm_config.json\nLoad weights from encm.weights.h5
+            
+            PythonService -> PythonService: model.predict([user_ids, item_ids, context_features])\nGet scores for all items\nTop-K selection
+            
+            PythonService --> PythonInvoker: JSON { ok: true, model: 'ENCM', items: [...] }
+            deactivate PythonService
+            PythonInvoker --> Service: ENCM recommendations
+            
+        and
+            Service -> PythonInvoker: runPythonInference({ model: 'LNCM', ... })
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn(...)
+            activate PythonService
+            PythonService -> PythonService: Load LNCM model, predict, Top-K
+            PythonService --> PythonInvoker: LNCM results
+            deactivate PythonService
+            PythonInvoker --> Service: LNCM recommendations
+        and
+            Service -> PythonInvoker: runPythonInference({ model: 'NeuMF', ... })
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn(...)
+            activate PythonService
+            PythonService -> PythonService: Load NeuMF model, predict, Top-K
+            PythonService --> PythonInvoker: NeuMF results
+            deactivate PythonService
+            PythonInvoker --> Service: NeuMF recommendations
+        and
+            Service -> PythonInvoker: runPythonInference({ model: 'BMF', ... })
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn(...)
+            activate PythonService
+            PythonService -> PythonService: Load BMF model, predict, Top-K
+            PythonService --> PythonInvoker: BMF results
+            deactivate PythonService
+            PythonInvoker --> Service: BMF recommendations
+        end
+        deactivate PythonInvoker
+        
+        == Model Evaluation & Selection ==
+        
+        Service -> Service: Calculate Precision@10 for each model\nCalculate MAP@10 for each model\nCompare metrics
+        Service -> Service: Select best model (highest MAP@10, then Precision@10)
+        
+        == Save Cache ==
+        
+        loop For each recommendation in top results
+            Service -> Model: Recommendation.create({\n  userId, productId, modelName, score\n})
+            activate Model
+            Model -> Database: INSERT INTO recommendations\n(userId, productId, modelName, score)
+            activate Database
+            Database --> Model: Insert confirmation
+            deactivate Database
+            Model --> Service: Created record
+            deactivate Model
+        end
+        
+        Service -> Model: ModelRun.create({\n  userId, modelName, metricsJson, recommendationsJson\n})
+        activate Model
+        Model -> Database: INSERT INTO model_runs
+        activate Database
+        Database --> Model: Insert confirmation
+        deactivate Database
+        Model --> Service: Created record
+        deactivate Model
+        
+        Service --> Controller: Return recommendations
+        deactivate Service
+        
+    else Python Invoker not available (Fallback)
+        Service -> Service: buildUserProductFeatures(userId)
+        
+        Service -> Model: Product.findAll({ where: { statusId: 'S1' } })
+        activate Model
+        Model -> Database: SELECT * FROM products WHERE statusId = 'S1'
+        activate Database
+        Database --> Model: Products array
+        deactivate Database
+        Model --> Service: Products
+        deactivate Model
+        
+        Service -> Model: Interaction.findAll({ where: { userId } })
+        activate Model
+        Model -> Database: SELECT * FROM interactions WHERE userId = ?
+        activate Database
+        Database --> Model: Interactions array
+        deactivate Database
+        Model --> Service: Interactions
+        deactivate Model
+        
+        Service -> Model: Comment.findAll({ where: { productId: [...] } })
+        activate Model
+        Model -> Database: SELECT * FROM comments WHERE productId IN (...)
+        activate Database
+        Database --> Model: Comments array
+        deactivate Database
+        Model --> Service: Comments
+        deactivate Model
+        
+        Service -> Service: Calculate heuristic score:\nRating(45%) + Rating_count(15%) +\nViews(15%) + Discount(15%) + Intent(10%)
+        Service -> Service: Sort by score, select top-K
+        
+        loop Save recommendations
+            Service -> Model: Recommendation.create(...)
+            activate Model
+            Model -> Database: INSERT INTO recommendations
+            activate Database
+            Database --> Model: Confirmation
+            deactivate Database
+            Model --> Service: Created
+            deactivate Model
+        end
+        
+        Service --> Controller: Return heuristic recommendations
+        deactivate Service
+    end
+    
+    == Hydrate Product Information ==
+    
+    loop For each recommendation
+        Controller -> Model: Product.findOne({ where: { id: productId } })
+        activate Model
+        Model -> Database: SELECT * FROM products WHERE id = ?
+        activate Database
+        Database --> Model: Product data
+        deactivate Database
+        Model --> Controller: Product object
+        deactivate Model
+    end
+    
+    Controller -> Controller: Build response: { errCode: 0, data: [...] }
+    Controller --> Route: res.status(200).json(response)
+    Route --> Frontend: JSON response
+    Frontend --> User: Display recommendations
+    
+    deactivate Controller
+    deactivate Route
+    deactivate Frontend
+
+@enduml
+

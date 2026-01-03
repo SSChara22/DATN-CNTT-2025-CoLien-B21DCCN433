@@ -306,6 +306,12 @@ const updateStatusOrderService = (data) => {
 const getAllOrdersByUser = (userId) => {
     return axios.get(`/api/get-all-order-by-user?userId=${userId}`)
 }
+const getAllOrdersByShipper = (data) => {
+    let params = new URLSearchParams();
+    if (data.shipperId) params.append('shipperId', data.shipperId);
+    if (data.status) params.append('status', data.status);
+    return axios.get(`/api/get-all-order-by-shipper?${params.toString()}`)
+}
 const paymentOrderService = (data) => {
     return axios.post(`/api/payment-order`, data)
 
@@ -458,7 +464,7 @@ export {
     getProductFeatureService, getProductNewService, saveUserVoucherService, getAllVoucherByUserIdService, addShopCartService,
     getAllShopCartByUserIdService, deleteItemShopCartService, createNewOrderService, createNewAddressUserrService, getAllAddressUserByUserIdService,
     deleteAddressUserService, editAddressUserService, getDetailAddressUserByIdService, getAllOrder, getDetailOrder, updateStatusOrderService,
-    getAllOrdersByUser, paymentOrderService, paymentOrderSuccessService, createNewRoom, sendMessage, loadMessage, listRoomOfUser, listRoomOfAdmin, getAllCategoryBlogService,
+    getAllOrdersByUser, getAllOrdersByShipper, paymentOrderService, paymentOrderSuccessService, createNewRoom, sendMessage, loadMessage, listRoomOfUser, listRoomOfAdmin, getAllCategoryBlogService,
     createNewcommentService, getAllcommentByBlogIdService, ReplycommentService, deletecommentService, getFeatureBlog, getNewBlog, getCountCardStatistic, getCountStatusOrder,
     getStatisticByMonth, getStatisticByDay, checkPhonenumberEmail, createNewSupplierService, updateSupplierService, deleteSupplierService, getDetailSupplierByIdService,
     getAllSupplier, createNewReceiptService, getAllReceipt, getDetailReceiptByIdService, deleteReceiptService, updateReceiptService, createNewReceiptDetailService,

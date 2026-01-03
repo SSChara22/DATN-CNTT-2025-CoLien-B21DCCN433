@@ -1,0 +1,543 @@
+@startuml
+skinparam sequenceMessageAlign center
+skinparam roundcorner 15
+skinparam maxmessagesize 80
+skinparam sequenceParticipant underline
+skinparam shadowing true
+
+' Màu sắc giống Visual Paradigm
+skinparam participant {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam actor {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+skinparam box {
+    BackgroundColor #F0F0F0
+    BorderColor #666666
+    FontColor #000000
+}
+
+skinparam note {
+    BackgroundColor #FFFFCC
+    BorderColor #CCCC00
+    FontColor #000000
+}
+
+skinparam arrow {
+    Color #0066CC
+    Thickness 2
+}
+
+skinparam database {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+}
+
+title Biểu đồ tuần tự chi tiết - Hệ thống gợi ý sản phẩm
+title Kiến trúc: MVC + Service Layer + ML Service Layer
+
+actor User
+
+box "PRESENTATION LAYER" #F0F0F0
+participant "React Component\n(RecommendationView)" as Frontend
+end box
+
+box "ROUTING LAYER" #F0F0F0
+participant "Express Router\n(web.js)" as Route
+end box
+
+box "MIDDLEWARE LAYER" #F0F0F0
+participant "JWT Middleware\n(jwtVerify.js)" as Middleware
+end box
+
+box "CONTROLLER LAYER" #F0F0F0
+participant "RecommendationController\n(recommendationController.js)" as Controller
+end box
+
+box "SERVICE LAYER" #F0F0F0
+participant "RecommendationService\n(recommendationService.js)" as Service
+end box
+
+box "ML SERVICE LAYER" #F0F0F0
+participant "Python Invoker\n(pythonInvoker.js)" as PythonInvoker
+participant "Python ML Service\n(recommend_api.py)" as PythonService
+participant "Model Classes\n(ENCM, LNCM, NeuMF, BMF)" as MLModels
+end box
+
+box "DATA ACCESS LAYER" #F0F0F0
+participant "Sequelize Models\n(Product, Interaction, etc.)" as Model
+end box
+
+database "MySQL Database" as Database
+
+== 1. KHỞI TẠO GỢI Ý (POST /api/recommend/init) ==
+
+User -> Frontend: Click "Khởi tạo gợi ý"
+activate Frontend
+
+Frontend -> Route: HTTP POST /api/recommend/init?limit=10\nHeaders: Authorization: Bearer token
+activate Route
+
+note right of Route
+Routing Layer
+- Định tuyến request đến controller
+- Áp dụng middleware xác thực
+end note
+
+Route -> Middleware: verifyTokenUser(req, res, next)
+activate Middleware
+
+note right of Middleware
+Middleware Layer
+- Verify JWT token
+- Extract user info từ token
+- Attach req.user
+end note
+
+Middleware -> Database: SELECT * FROM users WHERE id = ?\n(Verify user exists)
+activate Database
+Database --> Middleware: User data
+deactivate Database
+
+alt Token valid && User exists
+    Middleware -> Middleware: req.user = { id, email, ... }
+    Middleware --> Route: next() (continue to controller)
+else Token invalid
+    Middleware --> Route: res.status(403).json({error: "Unauthorized"})
+    Route --> Frontend: 403 Forbidden
+    Frontend --> User: Hiển thị lỗi
+    deactivate Middleware
+    deactivate Route
+    deactivate Frontend
+    stop
+end
+deactivate Middleware
+
+Route -> Controller: initForCurrentUser(req, res)
+activate Controller
+
+note right of Controller
+Controller Layer (MVC)
+- Nhận request từ route
+- Extract parameters
+- Gọi service layer
+- Format response
+end note
+
+Controller -> Controller: Extract userId = req.user.id\nExtract limit = req.query.limit || 10
+
+Controller -> Service: initForUser(userId, limit)
+activate Service
+
+note right of Service
+Service Layer
+- Business logic chính
+- Orchestration
+- Decision making
+- Cache management
+end note
+
+== 2. SERVICE LAYER - XÓA CACHE CŨ ==
+
+Service -> Service: ensureTables()\n(Check/create recommendations, model_runs tables)
+
+Service -> Model: Recommendation.destroy({ where: { userId } })
+activate Model
+Model -> Database: DELETE FROM recommendations WHERE userId = ?
+activate Database
+Database --> Model: Deleted rows
+deactivate Database
+Model --> Service: Success
+deactivate Model
+
+Service -> Model: ModelRun.destroy({ where: { userId } })
+activate Model
+Model -> Database: DELETE FROM model_runs WHERE userId = ?
+activate Database
+Database --> Model: Deleted rows
+deactivate Database
+Model --> Service: Success
+deactivate Model
+
+== 3. SERVICE LAYER - TÍNH TOÁN GỢI Ý ==
+
+Service -> Service: computeRecommendationsForUser(userId, limit)
+
+== 4. CHUẨN BỊ CONTEXT VÀ GROUND TRUTH ==
+
+Service -> Service: deriveContext(new Date())\n-> { time_of_day, season, day_of_week, ... }
+
+Service -> Model: Interaction.findOne({\n  where: { userId },\n  order: [['timestamp','DESC']]\n})
+activate Model
+Model -> Database: SELECT * FROM interactions\nWHERE userId = ?\nORDER BY timestamp DESC\nLIMIT 1
+activate Database
+Database --> Model: Last interaction
+deactivate Database
+Model --> Service: { device_type, timestamp, ... }
+deactivate Model
+
+Service -> Model: Interaction.findAll({\n  where: { userId, actionCode: 'purchase' }\n})
+activate Model
+Model -> Database: SELECT productId FROM interactions\nWHERE userId = ? AND actionCode = 'purchase'
+activate Database
+Database --> Model: Purchase history
+deactivate Database
+Model --> Service: Ground truth set (for evaluation)
+deactivate Model
+
+Service -> Service: Build context payload:\n{ time_of_day, season, device_type, category }
+
+== 5. PYTHON ML INFERENCE (PARALLEL) ==
+
+alt Python Invoker available
+
+        note right of Service
+        Parallel Processing
+        Chạy 4 models đồng thời
+        để giảm latency
+        end note
+
+        par ENCM Model Inference
+            Service -> PythonInvoker: runPythonInference({\n  user_id: userId,\n  limit: 10,\n  model: 'ENCM',\n  context: { time_of_day, season, device_type }\n})
+            activate PythonInvoker
+            
+            note right of PythonInvoker
+            Python Invoker (Bridge Pattern)
+            - Spawn Python process
+            - Communicate via stdin/stdout
+            - Handle timeout (15s)
+            end note
+            
+            PythonInvoker -> PythonService: spawn('python', ['recommend_api.py'])\nWrite JSON to stdin
+            activate PythonService
+            
+            note right of PythonService
+            Python ML Service
+            - Load encoders từ DB
+            - Load model weights
+            - Predict scores
+            - Top-K selection
+            end note
+            
+            PythonService -> PythonService: load_resources()
+            
+            PythonService -> Database: SELECT original_id, idx\nFROM rec_user_encoder
+            activate Database
+            Database --> PythonService: User encoder mapping
+            deactivate Database
+            
+            PythonService -> Database: SELECT idx, original_id\nFROM rec_item_encoder e\nJOIN products p ON p.id = e.original_id\nWHERE p.statusId = 'S1'
+            activate Database
+            Database --> PythonService: Active items (candidates)
+            deactivate Database
+            
+            PythonService -> Database: SELECT feature_name, original_value, idx\nFROM rec_context_mapping
+            activate Database
+            Database --> PythonService: Context mappings
+            deactivate Database
+            
+            PythonService -> PythonService: _encode_user(userId)\n-> user_idx
+            
+            PythonService -> PythonService: _candidate_indices_from_db()\n-> item_indices array
+            
+            PythonService -> PythonService: _context_to_features(context)\n-> context_features array
+            
+            PythonService -> PythonService: _build_model('ENCM')
+            PythonService -> PythonService: Load encm_config.json
+            PythonService -> MLModels: ENCM(n_users, n_items, n_contexts, ...)
+            activate MLModels
+            
+            note right of MLModels
+            Model Classes (Keras/TensorFlow)
+            - ENCM: Context-aware
+            - LNCM: Linear combination
+            - NeuMF: Neural MF
+            - BMF: Bias MF
+            end note
+            
+            PythonService -> MLModels: Load weights from encm.weights.h5
+            MLModels --> PythonService: Model ready
+            deactivate MLModels
+            
+            PythonService -> MLModels: model.predict([user_ids, item_indices, context_features])
+            activate MLModels
+            MLModels -> MLModels: Forward pass through neural network\nCompute scores for all candidates
+            MLModels --> PythonService: Scores array
+            deactivate MLModels
+            
+            PythonService -> PythonService: np.argsort(-scores)[:limit]\n-> Top-K indices
+            
+            PythonService -> PythonService: _decode_item_index(idx)\n-> productId
+            
+            PythonService --> PythonInvoker: JSON {\n  ok: true,\n  model: 'ENCM',\n  items: [{productId, score}, ...]\n}
+            deactivate PythonService
+            
+            PythonInvoker --> Service: ENCM results
+            deactivate PythonInvoker
+            
+        and LNCM Model Inference
+            Service -> PythonInvoker: runPythonInference({ model: 'LNCM', ... })
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn(...)
+            activate PythonService
+            PythonService -> PythonService: Load LNCM model, predict, Top-K
+            PythonService -> MLModels: LNCM.predict([user_ids, item_indices])
+            activate MLModels
+            MLModels --> PythonService: Scores
+            deactivate MLModels
+            PythonService --> PythonInvoker: LNCM results
+            deactivate PythonService
+            PythonInvoker --> Service: LNCM results
+            deactivate PythonInvoker
+            
+        and NeuMF Model Inference
+            Service -> PythonInvoker: runPythonInference({ model: 'NeuMF', ... })
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn(...)
+            activate PythonService
+            PythonService -> PythonService: Load NeuMF model, predict, Top-K
+            PythonService -> MLModels: NeuMF.predict([user_ids, item_indices])
+            activate MLModels
+            MLModels --> PythonService: Scores
+            deactivate MLModels
+            PythonService --> PythonInvoker: NeuMF results
+            deactivate PythonService
+            PythonInvoker --> Service: NeuMF results
+            deactivate PythonInvoker
+            
+        and BMF Model Inference
+            Service -> PythonInvoker: runPythonInference({ model: 'BMF', ... })
+            activate PythonInvoker
+            PythonInvoker -> PythonService: spawn(...)
+            activate PythonService
+            PythonService -> PythonService: Load BMF model, predict, Top-K
+            PythonService -> MLModels: BMF.predict([user_ids, item_indices])
+            activate MLModels
+            MLModels --> PythonService: Scores
+            deactivate MLModels
+            PythonService --> PythonInvoker: BMF results
+            deactivate PythonService
+            PythonInvoker --> Service: BMF results
+            deactivate PythonInvoker
+        end
+
+    == 6. ĐÁNH GIÁ VÀ CHỌN MODEL TỐT NHẤT ==
+    
+    Service -> Service: Calculate metrics for each model
+    
+    loop For each model (ENCM, LNCM, NeuMF, BMF)
+        Service -> Service: Calculate Precision@10:\nhits / k\nwhere hits = recommendations in ground truth
+        
+        Service -> Service: Calculate MAP@10:\nsumPrec / denom\nwhere sumPrec = cumulative precision
+    end
+    
+    Service -> Service: Sort models by:\n1. MAP@10 (descending)\n2. Precision@10 (descending)
+    
+    Service -> Service: bestModel = modelRuns[0].modelName\ntop = modelRuns[0].recommendations
+    
+    == 7. LƯU CACHE VÀO DATABASE ==
+    
+    loop For each recommendation in top results
+        Service -> Model: Recommendation.create({\n  userId: userId,\n  productId: item.productId,\n  modelName: bestModel,\n  score: item.score\n})
+        activate Model
+        Model -> Database: INSERT INTO recommendations\n(userId, productId, modelName, score, createdAt, updatedAt)
+        activate Database
+        Database --> Model: Insert confirmation
+        deactivate Database
+        Model --> Service: Created record
+        deactivate Model
+    end
+    
+    loop For each model run
+        Service -> Model: ModelRun.create({\n  userId: userId,\n  modelName: modelName,\n  metricsJson: JSON.stringify(metrics),\n  recommendationsJson: JSON.stringify(recommendations)\n})
+        activate Model
+        Model -> Database: INSERT INTO model_runs\n(userId, modelName, metricsJson, recommendationsJson, ...)
+        activate Database
+        Database --> Model: Insert confirmation
+        deactivate Database
+        Model --> Service: Created record
+        deactivate Model
+    end
+    
+    Service --> Controller: { bestModel, top, modelRuns }
+    deactivate Service
+    
+else Python Invoker not available (FALLBACK)
+    
+    note right of Service
+    Fallback Strategy
+    Nếu Python service fail,
+    sử dụng heuristic scoring
+    end note
+    
+    == 8. HEURISTIC SCORING (FALLBACK) ==
+    
+    Service -> Service: buildUserProductFeatures(userId)
+    
+    Service -> Model: Product.findAll({ where: { statusId: 'S1' } })
+    activate Model
+    Model -> Database: SELECT * FROM products WHERE statusId = 'S1'
+    activate Database
+    Database --> Model: All active products
+    deactivate Database
+    Model --> Service: Products array
+    deactivate Model
+    
+    Service -> Model: ProductDetail.findAll({ where: { productId: [...] } })
+    activate Model
+    Model -> Database: SELECT * FROM product_details\nWHERE productId IN (...)
+    activate Database
+    Database --> Model: Product details (prices, discounts)
+    deactivate Database
+    Model --> Service: Details
+    deactivate Model
+    
+    Service -> Model: Comment.findAll({ where: { productId: [...] } })
+    activate Model
+    Model -> Database: SELECT * FROM comments\nWHERE productId IN (...)
+    activate Database
+    Database --> Model: Comments (ratings)
+    deactivate Database
+    Model --> Service: Comments
+    deactivate Model
+    
+    Service -> Model: Interaction.findAll({ where: { userId, productId: [...] } })
+    activate Model
+    Model -> Database: SELECT * FROM interactions\nWHERE userId = ? AND productId IN (...)
+    activate Database
+    Database --> Model: User interactions
+    deactivate Database
+    Model --> Service: Interactions
+    deactivate Model
+    
+    Service -> Service: Calculate features for each product:\n- rating (normalized 0-1)\n- rating_count (normalized 0-1)\n- product_views (normalized 0-1)\n- discount_percentage (normalized 0-1)\n- purchase_intent (high/medium/low)
+    
+    Service -> Service: Calculate heuristic score:\nscore = 0.45*r + 0.15*rc + 0.15*pv + 0.15*disc + 0.10*iw
+    
+    Service -> Service: Sort by score DESC\nSelect top-K
+    
+    loop Save recommendations
+        Service -> Model: Recommendation.create({...})
+        activate Model
+        Model -> Database: INSERT INTO recommendations
+        activate Database
+        Database --> Model: Success
+        deactivate Database
+        Model --> Service: Created
+        deactivate Model
+    end
+    
+    Service --> Controller: { bestModel: 'heuristic', top, modelRuns }
+    deactivate Service
+end
+
+== 9. TRẢ RESPONSE VỀ FRONTEND ==
+
+Controller -> Controller: Build response:\n{ errCode: 0, message: 'initialized' }
+
+Controller --> Route: res.status(200).json(response)
+Route --> Frontend: JSON response
+Frontend --> User: Hiển thị thông báo thành công
+
+deactivate Controller
+deactivate Route
+deactivate Frontend
+
+== 10. LẤY DANH SÁCH GỢI Ý (GET /api/recommend/list) ==
+
+User -> Frontend: Click "Xem gợi ý"
+activate Frontend
+
+Frontend -> Route: HTTP GET /api/recommend/list?limit=10\nHeaders: Authorization: Bearer token
+activate Route
+
+Route -> Middleware: verifyTokenUser(req, res, next)
+activate Middleware
+Middleware -> Database: Verify user
+activate Database
+Database --> Middleware: User valid
+deactivate Database
+Middleware --> Route: next()
+deactivate Middleware
+
+Route -> Controller: listForCurrentUser(req, res)
+activate Controller
+
+Controller -> Service: getCachedForUser(userId, limit)
+activate Service
+
+Service -> Model: Recommendation.findAll({\n  where: { userId },\n  order: [['score', 'DESC']],\n  limit: limit\n})
+activate Model
+Model -> Database: SELECT * FROM recommendations\nWHERE userId = ?\nORDER BY score DESC\nLIMIT ?
+activate Database
+Database --> Model: Cached recommendations
+deactivate Database
+Model --> Service: Recommendations array
+deactivate Model
+
+Service --> Controller: Recommendations
+deactivate Service
+
+== 11. HYDRATE PRODUCT INFORMATION ==
+
+loop For each recommendation
+    Controller -> Model: Product.findOne({ where: { id: productId } })
+    activate Model
+    Model -> Database: SELECT * FROM products WHERE id = ?
+    activate Database
+    Database --> Model: Product data
+    deactivate Database
+    Model --> Controller: Product object
+    deactivate Model
+end
+
+Controller -> Controller: Build response:\n{ errCode: 0, data: [{product, score, modelName}, ...] }
+
+Controller --> Route: res.status(200).json(response)
+Route --> Frontend: JSON response
+Frontend --> User: Hiển thị danh sách gợi ý
+
+deactivate Controller
+deactivate Route
+deactivate Frontend
+
+note over User, Database
+KIẾN TRÚC PHẦN MỀM:
+
+1. MVC Pattern (Model-View-Controller)
+   - Controller: recommendationController.js
+   - Model: Sequelize ORM models
+   - View: React components
+
+2. Service Layer Pattern
+   - Tách business logic khỏi controller
+   - recommendationService.js chứa logic chính
+
+3. Bridge Pattern
+   - pythonInvoker.js kết nối Node.js và Python
+
+4. Repository Pattern
+   - Sequelize ORM đóng vai trò repository
+   - Tách biệt data access logic
+
+5. Strategy Pattern
+   - Nhiều models (ENCM, LNCM, NeuMF, BMF)
+   - Chọn strategy tốt nhất dựa trên metrics
+
+6. Lazy Loading Pattern
+   - Python models chỉ load khi cần
+   - Cache models sau khi load
+end note
+
+@enduml
+

@@ -1,0 +1,162 @@
+@startuml
+skinparam usecase {
+    BackgroundColor #E1F5FF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+    FontSize 10
+}
+
+skinparam actor {
+    BackgroundColor #FFFFFF
+    BorderColor #0066CC
+    FontColor #000000
+    FontStyle bold
+}
+
+title Use Case Diagram - Quản lý Admin\n(Admin Management Use Cases)
+
+actor "Admin" as Admin
+
+' ============================================
+' USE CASES CHÍNH
+' ============================================
+usecase "Đăng nhập" as Login
+usecase "Đăng xuất" as Logout
+usecase "Quản lý người dùng" as ManageUser
+usecase "Quản lý tất cả danh mục" as ManageCategory
+usecase "Quản lý đơn hàng" as ManageOrder
+usecase "Quản lý nhập hàng" as ManageImport
+usecase "Quản lý tin nhắn" as ManageMessage
+usecase "Thống kê" as Statistics
+
+' ============================================
+' EXTENDED USE CASES - Quản lý người dùng
+' ============================================
+usecase "Tìm kiếm người dùng" as SearchUser
+usecase "Thêm người dùng" as AddUser
+usecase "Sửa người dùng" as EditUser
+usecase "Xóa người dùng" as DeleteUser
+usecase "Xem thông tin người dùng" as ViewUser
+usecase "Phân quyền" as AssignRole
+
+' ============================================
+' EXTENDED USE CASES - Quản lý danh mục
+' ============================================
+usecase "Tìm kiếm danh mục" as SearchCategory
+usecase "Thêm danh mục" as AddCategory
+usecase "Sửa danh mục" as EditCategory
+usecase "Xóa danh mục" as DeleteCategory
+usecase "Xem thông tin danh mục" as ViewCategory
+
+' ============================================
+' EXTENDED USE CASES - Quản lý đơn hàng
+' ============================================
+usecase "Tìm kiếm đơn hàng" as SearchOrder
+usecase "Xem thông tin đơn hàng" as ViewOrder
+usecase "Cập nhật trạng thái đơn hàng" as UpdateOrderStatus
+
+' ============================================
+' EXTENDED USE CASES - Quản lý nhập hàng
+' ============================================
+usecase "Tìm kiếm đơn nhập hàng" as SearchImport
+usecase "Thêm đơn nhập hàng" as AddImport
+usecase "Sửa đơn nhập hàng" as EditImport
+usecase "Xem thông tin đơn nhập hàng" as ViewImport
+
+' ============================================
+' EXTENDED USE CASES - Quản lý tin nhắn
+' ============================================
+usecase "Tìm kiếm hội thoại" as SearchConversation
+usecase "Trả lời tin nhắn" as ReplyMessage
+
+' ============================================
+' EXTENDED USE CASES - Thống kê
+' ============================================
+usecase "Xem thống kê tổng quan" as ViewOverview
+usecase "Xem thống kê theo tháng" as ViewMonthly
+usecase "Xem thống kê theo ngày" as ViewDaily
+usecase "Xem thống kê doanh thu" as ViewRevenue
+usecase "Xem thống kê lợi nhuận" as ViewProfit
+usecase "Xem thống kê tồn kho" as ViewInventory
+
+' ============================================
+' RELATIONSHIPS - Admin với Use Cases
+' ============================================
+Admin --> Login
+Admin --> Logout
+Admin --> ManageUser
+Admin --> ManageCategory
+Admin --> ManageOrder
+Admin --> ManageImport
+Admin --> ManageMessage
+Admin --> Statistics
+
+' ============================================
+' <<include>> RELATIONSHIPS
+' Tất cả use case quản lý phải include Login
+' ============================================
+ManageUser ..> Login : <<include>>
+ManageCategory ..> Login : <<include>>
+ManageOrder ..> Login : <<include>>
+ManageImport ..> Login : <<include>>
+ManageMessage ..> Login : <<include>>
+Statistics ..> Login : <<include>>
+
+' ============================================
+' <<extend>> RELATIONSHIPS
+' Extended use cases extend từ main use cases
+' ============================================
+
+' Quản lý người dùng - Extended
+SearchUser ..> ManageUser : <<extend>>
+AddUser ..> ManageUser : <<extend>>
+EditUser ..> ManageUser : <<extend>>
+DeleteUser ..> ManageUser : <<extend>>
+ViewUser ..> ManageUser : <<extend>>
+AssignRole ..> ManageUser : <<extend>>
+
+' Quản lý danh mục - Extended
+SearchCategory ..> ManageCategory : <<extend>>
+AddCategory ..> ManageCategory : <<extend>>
+EditCategory ..> ManageCategory : <<extend>>
+DeleteCategory ..> ManageCategory : <<extend>>
+ViewCategory ..> ManageCategory : <<extend>>
+
+' Quản lý đơn hàng - Extended
+SearchOrder ..> ManageOrder : <<extend>>
+ViewOrder ..> ManageOrder : <<extend>>
+UpdateOrderStatus ..> ManageOrder : <<extend>>
+
+' Quản lý nhập hàng - Extended
+SearchImport ..> ManageImport : <<extend>>
+AddImport ..> ManageImport : <<extend>>
+EditImport ..> ManageImport : <<extend>>
+ViewImport ..> ManageImport : <<extend>>
+
+' Quản lý tin nhắn - Extended
+SearchConversation ..> ManageMessage : <<extend>>
+ReplyMessage ..> ManageMessage : <<extend>>
+
+' Thống kê - Extended
+ViewOverview ..> Statistics : <<extend>>
+ViewMonthly ..> Statistics : <<extend>>
+ViewDaily ..> Statistics : <<extend>>
+ViewRevenue ..> Statistics : <<extend>>
+ViewProfit ..> Statistics : <<extend>>
+ViewInventory ..> Statistics : <<extend>>
+
+' ============================================
+' NOTE
+' ============================================
+note right of Login
+  **Quan trọng:**
+  Tất cả chức năng quản lý
+  yêu cầu đăng nhập trước
+  (verifyTokenAdmin middleware)
+end note
+
+@enduml
+
+
+
