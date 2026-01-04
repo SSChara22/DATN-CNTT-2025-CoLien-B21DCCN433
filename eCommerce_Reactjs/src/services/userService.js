@@ -302,6 +302,10 @@ const getDetailOrder = (id) => {
 const updateStatusOrderService = (data) => {
     return axios.put(`/api/update-status-order`, data)
 }
+const updateImageOrderService = (data) => {
+    return axios.put('/api/update-image-order', data);
+};
+
 
 const getAllOrdersByUser = (userId) => {
     return axios.get(`/api/get-all-order-by-user?userId=${userId}`)
@@ -470,5 +474,5 @@ export {
     getAllSupplier, createNewReceiptService, getAllReceipt, getDetailReceiptByIdService, deleteReceiptService, updateReceiptService, createNewReceiptDetailService,
     getStatisticOverturn, getStatisticProfit, getProductShopcartService, getDetailUserByEmail, getProductRecommendService,
     getStatisticStockProduct, getExchangeRate, paymentOrderVnpayService, confirmOrderVnpay, paymentOrderVnpaySuccessService,
-    initRecommendationsService, listRecommendationsService, clearRecommendationsService
+    initRecommendationsService, listRecommendationsService, clearRecommendationsService, updateImageOrderService
 }

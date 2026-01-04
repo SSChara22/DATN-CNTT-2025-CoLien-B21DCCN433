@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import Footer from "../System/Footer";
 import Header from "../System/Header";
@@ -7,18 +7,22 @@ import ManageShipperOrder from "./ManageShipperOrder";
 import DetailShipperOrder from "./DetailShipperOrder";
 
 // Common Layout for Shipper
-const ShipperLayout = ({ children }) => (
-    <div className="sb-nav-fixed">
-        <Header />
-        <div id="layoutSidenav">
-            <SideBarShipper />
-            <div id="layoutSidenav_content">
-                <main>{children}</main>
-                <Footer />
+const ShipperLayout = ({ children }) => {
+    const [isToggled, setIsToggled] = useState(false);
+
+    return (
+        <div className={`sb-nav-fixed ${isToggled ? "sb-sidenav-toggled" : ""}`}>
+            <Header onToggle={() => setIsToggled(!isToggled)} />
+            <div id="layoutSidenav">
+                <SideBarShipper />
+                <div id="layoutSidenav_content">
+                    <main>{children}</main>
+                    <Footer />
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 function HomePageShipper() {
     return (
