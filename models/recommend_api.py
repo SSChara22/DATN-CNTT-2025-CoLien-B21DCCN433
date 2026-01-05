@@ -1,245 +1,346 @@
 #!/usr/bin/env python3
+"""
+Recommendation API for real-time inference
+Loads pre-trained models for e-commerce recommendations
+"""
+
 import sys
-import os
 import json
-import pickle
+import os
 import numpy as np
+import pandas as pd
 import tensorflow as tf
-import pymysql
+from sklearn.preprocessing import LabelEncoder
+import mysql.connector
+from datetime import datetime
+import pickle
 
-# Ensure we can import model classes from models/model_classes.py
-ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, ROOT)
-try:
-    from model_classes import ENCM, LNCM, NeuMF, BMF
-except Exception as e:
-    print(json.dumps({"ok": False, "error": f"import_error: {e}"}))
-    sys.exit(0)
+# Redirect all print statements to stderr by default for this module
+_original_print = print
+def print(*args, **kwargs):
+    if 'file' not in kwargs:
+        kwargs['file'] = sys.stderr
+    _original_print(*args, **kwargs)
 
-MODELS_DIR = ROOT
+# Suppress TensorFlow logging and progress bars
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+tf.config.set_visible_devices([], 'GPU')
+tf.keras.utils.disable_interactive_logging()
+import logging
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
-# DB config (read from env) with compatibility to Node .env naming
-_DB_HOST = os.getenv('DB_HOST') or os.getenv('DB_HOST', None)
-DB_HOST = _DB_HOST if _DB_HOST else '127.0.0.1'
-_DB_PORT = os.getenv('DB_PORT') or os.getenv('DB_PORT', None)
-DB_PORT = int(_DB_PORT) if _DB_PORT else 3306
-DB_USER = (os.getenv('DB_USER') or os.getenv('DB_USERNAME') or 'root')
-DB_PASS = (os.getenv('DB_PASS') or os.getenv('DB_PASSWORD') or '')
-DB_NAME = (os.getenv('DB_NAME') or os.getenv('DB_DATABASE_NAME') or 'ecom')
+# Context manager to suppress stdout
+class SuppressOutput:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+        return self
 
-# Lazy singletons
-_cached = {
-    'encoders': None,          # {'user': dict(original_id->idx), 'item': dict(original_id->idx)}
-    'context_info': None,      # {'reverse_mappings': {...}, 'feature_names': [...]} built from DB
-    'idx_to_pid': None,        # {item_idx: productId} for active items
-    'models': {},
-    'configs': {}
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
+
+# Database configuration
+DB_CONFIG = {
+    'host': '127.0.0.1',
+    'user': 'root',
+    'password': '',
+    'database': 'ecom'
 }
 
-def _load_pickle(path):
-    with open(path, 'rb') as f:
-        return pickle.load(f)
+# Import model classes
+from model_classes import BMF, NeuMF, LNCM, ENCM
 
-def db_connect():
-    return pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER,
-                           password=DB_PASS, database=DB_NAME,
-                           charset='utf8mb4', autocommit=True)
 
-def load_resources():
-    if _cached['encoders'] is None or _cached['idx_to_pid'] is None or _cached['context_info'] is None:
-        conn = db_connect()
+class TrainedRecommendationSystem:
+    def __init__(self):
+        self.db_connection = None
+        self.models = {}
+        self.encoders = {}
+        self.data_stats = {}
+        self.context_encoders = {}
+        self.initialize_database()
+        self.load_encoders_and_stats()
+        self.load_trained_models()
+
+    def initialize_database(self):
         try:
-            user_map = {}
-            item_map = {}
-            idx_to_pid = {}
-            # user encoder
-            with conn.cursor() as cur:
-                cur.execute("SELECT original_id, idx FROM rec_user_encoder")
-                for oid, idx in cur.fetchall():
-                    user_map[str(oid)] = int(idx)
-            # item encoder (full mapping)
-            with conn.cursor() as cur:
-                cur.execute("SELECT original_id, idx FROM rec_item_encoder")
-                for oid, idx in cur.fetchall():
-                    item_map[str(oid)] = int(idx)
-            # active candidates (statusId='S1') and idx->productId map
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT e.idx, e.original_id
-                    FROM rec_item_encoder e
-                    JOIN products p ON p.id = e.original_id
-                    WHERE p.statusId = 'S1'
-                """)
-                for idx, oid in cur.fetchall():
-                    idx_to_pid[int(idx)] = int(oid)
-            # Fallback: if no active candidates found, try all mapped items (no status filter)
-            if not idx_to_pid:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT idx, original_id FROM rec_item_encoder")
-                    for idx, oid in cur.fetchall():
-                        idx_to_pid[int(idx)] = int(oid)
-            # Last resort: derive popular items from Product.view and keep those that exist in item_map
-            if not idx_to_pid:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT id FROM products WHERE statusId='S1' ORDER BY view DESC LIMIT 500")
-                    rows = cur.fetchall()
-                    for (pid,) in rows:
-                        # find encoder index for this product if present
-                        if str(pid) in item_map:
-                            idx_to_pid[int(item_map[str(pid)])] = int(pid)
-            # context mappings
-            reverse_mappings = {}
-            feature_names = []
-            with conn.cursor() as cur:
-                cur.execute("SELECT feature_name, original_value, idx FROM rec_context_mapping")
-                rows = cur.fetchall()
-                for feat, val, idx in rows:
-                    reverse_mappings.setdefault(feat, {})[str(val)] = int(idx)
-            with conn.cursor() as cur:
-                cur.execute("SELECT feature_name, position FROM rec_context_meta ORDER BY position ASC")
-                feature_names = [r[0] for r in cur.fetchall()]
-            _cached['encoders'] = {'user': user_map, 'item': item_map}
-            _cached['idx_to_pid'] = idx_to_pid
-            _cached['context_info'] = {'reverse_mappings': reverse_mappings, 'feature_names': feature_names}
-        finally:
-            conn.close()
+            self.db_connection = mysql.connector.connect(**DB_CONFIG)
+        except Exception as e:
+            sys.exit(1)
 
-def _decode_item_index(idx):
-    # Decode using DB-provided idx_to_pid for active candidates
-    m = _cached.get('idx_to_pid') or {}
-    return int(m.get(int(idx), idx))
+    def load_encoders_and_stats(self):
+        """Load pre-trained encoders and data statistics"""
+        try:
+            # Load encoders
+            with open('EcomModelTrain/training_data/user_encoder.pkl', 'rb') as f:
+                self.encoders['user'] = pickle.load(f)
+            with open('EcomModelTrain/training_data/item_encoder.pkl', 'rb') as f:
+                self.encoders['item'] = pickle.load(f)
+            with open('EcomModelTrain/training_data/context_encoders.pkl', 'rb') as f:
+                self.context_encoders = pickle.load(f)
+            with open('EcomModelTrain/training_data/data_stats.pkl', 'rb') as f:
+                self.data_stats = pickle.load(f)
 
-def _encode_user(user_id, user_map):
+            print(f"Loaded encoders for {self.data_stats['n_users']} users, {self.data_stats['n_items']} items")
+        except Exception as e:
+            print(f"Error loading encoders: {e}")
+            sys.exit(1)
+
+    def load_trained_models(self):
+        """Load pre-trained model weights"""
+        try:
+            # Initialize models with fixed dimensions (matching training)
+            self.models['BMF'] = BMF(n_users=self.data_stats['n_users'], n_items=self.data_stats['n_items'], embedding_dim=50)
+            self.models['NeuMF'] = NeuMF(n_users=self.data_stats['n_users'], n_items=self.data_stats['n_items'], embedding_dim=50, hidden_dims=[64, 32, 16])
+            self.models['LNCM'] = LNCM(n_users=self.data_stats['n_users'], n_items=self.data_stats['n_items'], embedding_dim=50, hidden_dims=[64, 32])
+
+            # ENCM with training model class
+            from training_model_classes import ENCM as ENCMTraining
+            n_contexts = [feat[1] for feat in self.data_stats['context_features']]
+            # Use context dimensions from data_stats (what models were trained with)
+            context_dims = [feat[1] for feat in self.data_stats['context_features']]
+            self.models['ENCM'] = ENCMTraining(
+                n_users=self.data_stats['n_users'],
+                n_items=self.data_stats['n_items'],
+                n_contexts=n_contexts,
+                embedding_dim=50,
+                context_dims=context_dims,
+                hidden_dims=[64, 32]
+            )
+
+            # Build models
+            self.models['BMF'].build([(None,), (None,)])
+            self.models['NeuMF'].build([(None,), (None,)])
+            self.models['LNCM'].build([(None,), (None,)])
+            self.models['ENCM'].build([(None,), (None,), (None, 10)])
+
+            # Build models (required before loading weights)
+            self.models['BMF'].build([(None,), (None,)])
+            self.models['NeuMF'].build([(None,), (None,)])
+            self.models['LNCM'].build([(None,), (None,)])
+            self.models['ENCM'].build([(None,), (None,), (None, 10)])  # 10 context features
+
+            # Load weights
+            self.models['BMF'].load_weights('models/bmf_model.h5')
+            self.models['NeuMF'].load_weights('models/neumf_model.h5')
+            self.models['LNCM'].load_weights('models/lncm_model.h5')
+            self.models['ENCM'].load_weights('models/encm_model.h5')
+
+            print("All pre-trained models loaded successfully!")
+
+        except Exception as e:
+            print(f"Error loading models: {e}")
+            sys.exit(1)
+
+    def get_user_context(self, user_id, provided_context=None):
+        """Get current context for user"""
+        try:
+            context = provided_context or {}
+
+            # Get user gender
+            if 'gender' not in context:
+                user_query = f"SELECT genderId FROM users WHERE id = {user_id}"
+                user_df = pd.read_sql(user_query, self.db_connection)
+                gender = user_df.iloc[0]['genderId'] if not user_df.empty else None
+                gender_map = {'M': 0, 'FE': 1, 'O': 2}
+                context['gender'] = gender_map.get(gender, 3)
+
+            # Get device type
+            if 'device_type' not in context:
+                device_query = f"SELECT device_type FROM interactions WHERE userId = {user_id} ORDER BY timestamp DESC LIMIT 1"
+                device_df = pd.read_sql(device_query, self.db_connection)
+                context['device_type'] = device_df.iloc[0]['device_type'] if not device_df.empty else 'unknown'
+
+            # Get preferred categories and brands
+            if 'preferred_categories' not in context or 'preferred_brands' not in context:
+                pref_query = f"""
+                    SELECT p.categoryId, p.brandId
+                    FROM interactions i
+                    JOIN products p ON i.productId = p.id
+                    WHERE i.userId = {user_id} AND i.actionCode IN ('cart', 'purchase')
+                    ORDER BY i.timestamp DESC
+                    LIMIT 50
+                """
+                pref_df = pd.read_sql(pref_query, self.db_connection)
+                context['preferred_categories'] = pref_df['categoryId'].dropna().unique().tolist()
+                context['preferred_brands'] = pref_df['brandId'].dropna().unique().tolist()
+
+            # Current time context
+            now = datetime.now()
+            hour = now.hour
+            month = now.month
+            day_of_week = now.weekday()
+            is_weekend = 1 if day_of_week >= 5 else 0
+
+            time_of_day = 0 if hour < 6 else (1 if hour < 12 else (2 if hour < 18 else 3))
+            season = 0 if month <= 2 or month == 12 else (1 if month <= 5 else (2 if month <= 8 else 3))
+
+            context['time_of_day'] = context.get('time_of_day', time_of_day)
+            context['season'] = context.get('season', season)
+            context['hour'] = context.get('hour', hour)
+            context['month'] = context.get('month', month - 1)  # 0-based
+            context['day_of_week'] = context.get('day_of_week', day_of_week)
+            context['is_weekend'] = context.get('is_weekend', is_weekend)
+
+            return context
+
+        except Exception as e:
+            return {
+                'device_type': 'unknown',
+                'time_of_day': 1,
+                'season': 2,
+                'gender': 3,
+                'preferred_categories': [],
+                'preferred_brands': [],
+                'hour': 12,
+                'month': 5,
+                'day_of_week': 0,
+                'is_weekend': 0
+            }
+
+    def get_recommendations(self, user_id, model_name, limit=10, provided_context=None):
+        """Get recommendations for a user using specified model"""
+        try:
+            if model_name not in self.models:
+                return {'ok': False, 'error': f'Model {model_name} not found'}
+
+            model = self.models[model_name]
+
+            # Get all available products
+            products_df = pd.read_sql("SELECT id, name, categoryId, brandId FROM products WHERE statusId = 'S1'", self.db_connection)
+            product_ids = products_df['id'].values
+
+            # Convert to model indices
+            try:
+                user_id_int = int(user_id)
+                if user_id_int in self.encoders['user'].classes_:
+                    user_idx = self.encoders['user'].transform([user_id_int])[0]
+                else:
+                    user_idx = 0  # fallback
+
+                valid_product_ids = [pid for pid in product_ids if pid in self.encoders['item'].classes_]
+                if not valid_product_ids:
+                    valid_product_ids = [self.encoders['item'].classes_[0]]
+                item_indices = self.encoders['item'].transform(valid_product_ids)
+            except Exception as e:
+                return {'ok': False, 'error': f'Encoding error: {e}'}
+
+            # Get user context
+            context = self.get_user_context(user_id, provided_context)
+
+            # Prepare input data
+            n_items = len(valid_product_ids)
+            user_indices = np.full(n_items, user_idx)
+
+            if model_name == 'ENCM':
+                # Get context features for ENCM
+                context_features = []
+                for pid in valid_product_ids:
+                    product_row = products_df[products_df['id'] == pid]
+                    if not product_row.empty:
+                        prod = product_row.iloc[0]
+
+                        # Encode features
+                        category_id = self.context_encoders['category'].transform([prod['categoryId'] or 'unknown'])[0]
+                        brand_id = self.context_encoders['brand'].transform([prod['brandId'] or 'unknown'])[0]
+                        device_type_id = self.context_encoders['device'].transform([context.get('device_type', 'unknown')])[0]
+
+                        # Time features - convert strings to integers
+                        time_of_day_str = context.get('time_of_day', 'morning')
+                        season_str = context.get('season', 'summer')
+                        gender_str = context.get('gender', 'M')
+
+                        # Convert string to int
+                        time_of_day_map = {'night': 0, 'morning': 1, 'afternoon': 2, 'evening': 3}
+                        season_map = {'winter': 0, 'spring': 1, 'summer': 2, 'autumn': 3}
+                        gender_map = {'M': 0, 'FE': 1, 'O': 2}  # Add gender mapping
+
+                        time_of_day = time_of_day_map.get(time_of_day_str, 1)  # default to morning
+                        season = season_map.get(season_str, 2)  # default to summer
+                        gender_id = gender_map.get(gender_str, 3)  # default to unknown (3)
+                        # gender_id đã được convert ở trên
+                        hour_id = context.get('hour', 12)
+                        month_id = context.get('month', 5)
+                        day_of_week_id = context.get('day_of_week', 0)
+                        is_weekend_id = context.get('is_weekend', 0)
+
+                        context_feature = [
+                            category_id, brand_id, device_type_id, time_of_day, season, gender_id,
+                            hour_id, month_id, day_of_week_id, is_weekend_id
+                        ]
+                        context_features.append(context_feature)
+                    else:
+                        context_features.append([0] * 10)
+
+                context_features = np.array(context_features, dtype=np.int32)
+                with SuppressOutput():
+                    predictions = model.predict([user_indices, item_indices, context_features], batch_size=32, verbose=0)
+            else:
+                # For other models
+                with SuppressOutput():
+                    predictions = model.predict([user_indices, item_indices], batch_size=32, verbose=0)
+
+            # Get top recommendations
+            predictions_flat = predictions.flatten()
+            top_indices = np.argsort(predictions_flat)[::-1][:limit]
+
+            recommendations = []
+            for idx in top_indices:
+                product_id = valid_product_ids[idx]
+                score = float(predictions_flat[idx])
+                product_row = products_df[products_df['id'] == product_id].iloc[0]
+                product_name = product_row['name']
+                brand_name = product_row['brandId'] or 'Unknown Brand'
+
+                recommendations.append({
+                    'productId': int(product_id),
+                    'productName': product_name,
+                    'brandName': brand_name,
+                    'score': score
+                })
+
+            return {
+                'ok': True,
+                'items': recommendations,
+                'context': context,
+                'model': model_name
+            }
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+
+def main():
+    """Main API handler"""
     try:
-        return int(user_map.get(str(user_id))) if str(user_id) in user_map else None
-    except Exception:
-        return None
+        # Read input from stdin
+        input_data = sys.stdin.read()
+        if not input_data:
+            _original_print(json.dumps({'ok': False, 'error': 'No input data'}))
+            return
 
-def _candidate_indices_from_db():
-    # Use cached idx_to_pid keys as candidates (active items only)
-    keys = sorted((_cached.get('idx_to_pid') or {}).keys())
-    if not keys:
-        return np.arange(0, dtype=np.int32)
-    return np.array(keys, dtype=np.int32)
+        payload = json.loads(input_data)
 
-def _build_model(model_name, configs):
-    if model_name in _cached['models']:
-        return _cached['models'][model_name]
-    import json as _json
-    cfg_path = os.path.join(MODELS_DIR, f"{model_name.lower()}_config.json")
-    with open(cfg_path, 'r') as f:
-        cfg = _json.load(f)
-    _cached['configs'][model_name] = cfg
-    if model_name == 'ENCM':
-        m = ENCM(n_users=cfg['n_users'], n_items=cfg['n_items'], n_contexts=cfg['n_contexts'],
-                 embedding_dim=cfg['embedding_dim'], context_dim=cfg['context_dim'], hidden_dims=cfg['hidden_dims'])
-        # build
-        dummy_u = np.array([0], dtype=np.int32)
-        dummy_i = np.array([0], dtype=np.int32)
-        dummy_ctx = np.zeros((1, len(cfg['n_contexts'])), dtype=np.int32)
-        m([dummy_u, dummy_i, dummy_ctx])
-        m.load_weights(os.path.join(MODELS_DIR, 'encm.weights.h5'), skip_mismatch=True)
-    elif model_name == 'LNCM':
-        m = LNCM(n_users=cfg['n_users'], n_items=cfg['n_items'], embedding_dim=cfg['embedding_dim'], hidden_dims=cfg['hidden_dims'])
-        m([np.array([0], dtype=np.int32), np.array([0], dtype=np.int32)])
-        m.load_weights(os.path.join(MODELS_DIR, 'lncm.weights.h5'), skip_mismatch=True)
-    elif model_name == 'NeuMF':
-        m = NeuMF(n_users=cfg['n_users'], n_items=cfg['n_items'], embedding_dim=cfg['embedding_dim'], hidden_dims=cfg.get('hidden_dims', [64,32,16]))
-        m([np.array([0], dtype=np.int32), np.array([0], dtype=np.int32)])
-        m.load_weights(os.path.join(MODELS_DIR, 'neumf.weights.h5'), skip_mismatch=True)
-    elif model_name == 'BMF':
-        m = BMF(n_users=cfg['n_users'], n_items=cfg['n_items'], embedding_dim=cfg['embedding_dim'])
-        m([np.array([0], dtype=np.int32), np.array([0], dtype=np.int32)])
-        m.load_weights(os.path.join(MODELS_DIR, 'bmf.weights.h5'), skip_mismatch=True)
-    else:
-        raise ValueError(f"unsupported model {model_name}")
-    _cached['models'][model_name] = m
-    return m
+        user_id = payload.get('user_id')
+        limit = payload.get('limit', 10)
+        model_name = payload.get('model', 'BMF')
+        context = payload.get('context', {})
 
-def _context_to_features(context, context_info):
-    if context_info is None:
-        # no context used
-        return None
-    rev = context_info.get('reverse_mappings') or {}
-    feature_names = context_info.get('feature_names') or []
-    vals = []
-    for name in feature_names:
-        if name == 'time_of_day_encoded':
-            vals.append(rev.get('time_of_day', {}).get(context.get('time_of_day','Morning'), 0))
-        elif name == 'season_encoded':
-            vals.append(rev.get('season', {}).get(context.get('season','Spring'), 0))
-        elif name == 'device_type_encoded':
-            vals.append(rev.get('device_type', {}).get(context.get('device_type','Mobile'), 0))
-        elif name == 'category_encoded':
-            vals.append(rev.get('category', {}).get(context.get('category','Sedan'), 0))
-        else:
-            vals.append(0)
-    return np.array([vals], dtype=np.int32)
+        if not user_id:
+            _original_print(json.dumps({'ok': False, 'error': 'user_id is required'}))
+            return
 
-def handle_request(req):
-    load_resources()
-    enc_user = _cached['encoders']['user']
-    user_id = req.get('user_id')
-    limit = int(req.get('limit', 10))
-    model_label = (req.get('model') or 'ENCM').strip()
-    # Normalize model name
-    model_name = {'encm':'ENCM','lncm':'LNCM','bmf':'BMF','neumf':'NeuMF'}.get(model_label.lower(), model_label)
-    user_idx = _encode_user(str(user_id), enc_user)
-    # Fallback unseen user to index 0 to avoid empty results
-    if user_idx is None:
-        user_idx = 0
-    item_indices = _candidate_indices_from_db()
-    if item_indices.size == 0:
-        return {"ok": True, "model": model_name, "items": []}
-    user_ids = np.full_like(item_indices, np.int32(user_idx))
+        # Initialize recommendation system (singleton pattern would be better in production)
+        reco_system = TrainedRecommendationSystem()
 
-    # Build model
-    try:
-        m = _build_model(model_name, _cached['configs'])
+        # Get recommendations
+        result = reco_system.get_recommendations(user_id, model_name, limit, context)
+
+        _original_print(json.dumps(result))
+
     except Exception as e:
-        return {"ok": False, "error": f"load_model: {e}"}
+        _original_print(json.dumps({'ok': False, 'error': str(e)}))
 
-    # Predict
-    try:
-        # Ensure candidate indices fit model's item embedding size
-        cfg = _cached['configs'].get(model_name) or {}
-        max_items = int(cfg.get('n_items', 0))
-        if max_items > 0:
-            item_indices = item_indices[item_indices < max_items]
-            if item_indices.size == 0:
-                return {"ok": True, "model": model_name, "items": []}
-            user_ids = np.full_like(item_indices, np.int32(user_idx))
-        if model_name == 'ENCM':
-            ctx = req.get('context') or {}
-            ctx_info = _cached['context_info']
-            ctx_feats = _context_to_features(ctx, ctx_info)
-            if ctx_feats is None:
-                # Fallback zero context features matching expected dims
-                cfg_encm = _cached['configs'].get('ENCM') or {}
-                n = len(cfg_encm.get('n_contexts', []))
-                ctx_feats = np.zeros((1, n), dtype=np.int32)
-            ctx_feats = np.repeat(ctx_feats, item_indices.shape[0], axis=0)
-            scores = m.predict([user_ids, item_indices, ctx_feats], verbose=0).reshape(-1)
-        else:
-            scores = m.predict([user_ids, item_indices], verbose=0).reshape(-1)
-        # Top-K
-        top_idx = np.argsort(-scores)[:limit]
-        items = []
-        for pos in top_idx.tolist():
-            model_idx = int(item_indices[pos])
-            items.append({
-                'productId': _decode_item_index(model_idx),
-                'score': float(scores[pos])
-            })
-        return {"ok": True, "model": model_name, "items": items}
-    except Exception as e:
-        return {"ok": False, "error": f"predict_error: {e}"}
 
 if __name__ == '__main__':
-    try:
-        req = json.loads(sys.stdin.read() or '{}')
-    except Exception:
-        print(json.dumps({"ok": False, "error": "invalid_json"}))
-        sys.exit(0)
-    resp = handle_request(req)
-    print(json.dumps(resp))
+    main()

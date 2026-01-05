@@ -85,7 +85,7 @@ const VoucherModal = (props) => {
                 size="md" centered
             >
                 <div className="modal-header">
-                    <h5 className="modal-title">Chọn Eiser Voucher</h5>
+                    <h5 className="modal-title">Chọn MamboVoucher</h5>
                     <button onClick={handleCloseModal} type="button" className="btn btn-time" aria-label="Close">X</button>
                 </div>
                 <ModalBody>
