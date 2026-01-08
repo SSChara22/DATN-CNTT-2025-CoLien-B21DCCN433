@@ -162,27 +162,27 @@ class TrainedRecommendationSystem:
             #         del self.models['BMF']
 
             # LNCM
-            try:
-                if lncm_cfg is None:
-                    lncm_cfg = {
-                        'n_users': self.data_stats.get('n_users'),
-                        'n_items': self.data_stats.get('n_items'),
-                        'embedding_dim': 50,
-                        'hidden_dims': [64, 32],
-                    }
-                self.models['LNCM'] = LNCM(
-                    n_users=lncm_cfg.get('n_users', self.data_stats['n_users']),
-                    n_items=lncm_cfg.get('n_items', self.data_stats['n_items']),
-                    embedding_dim=lncm_cfg.get('embedding_dim', 50),
-                    hidden_dims=lncm_cfg.get('hidden_dims', [64, 32]),
-                )
-                _lncm = self.models['LNCM']
-                _lncm.build([(None,), (None,)])
-                _lncm.load_weights('models/lncm_model.h5')
-                loaded_any = True
-            except Exception:
-                if 'LNCM' in self.models:
-                    del self.models['LNCM']
+            # try:
+            #    if lncm_cfg is None:
+            #        lncm_cfg = {
+            #            'n_users': self.data_stats.get('n_users'),
+            #            'n_items': self.data_stats.get('n_items'),
+            #            'embedding_dim': 50,
+            #            'hidden_dims': [64, 32],
+            #        }
+            #    self.models['LNCM'] = LNCM(
+            #        n_users=lncm_cfg.get('n_users', self.data_stats['n_users']),
+            #        n_items=lncm_cfg.get('n_items', self.data_stats['n_items']),
+            #        embedding_dim=lncm_cfg.get('embedding_dim', 50),
+            #        hidden_dims=lncm_cfg.get('hidden_dims', [64, 32]),
+            #    )
+            #    _lncm = self.models['LNCM']
+            #    _lncm.build([(None,), (None,)])
+            #    _lncm.load_weights('models/lncm_model.h5')
+            #    loaded_any = True
+            #except Exception:
+            #    if 'LNCM' in self.models:
+            #        del self.models['LNCM']
 
             # NeuMF
             # [DISABLED]

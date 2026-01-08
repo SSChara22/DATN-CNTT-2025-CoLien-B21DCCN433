@@ -114,7 +114,7 @@ const LoginWebPage = () => {
                 roleId: "R2",
             });
             if (res && res.errCode === 0) {
-                toast.success("Táº¡o tÃ i khoáº£n thÃ nh cÃ´ng");
+                toast.success("Tạo tài khoản thành công!");
                 handleLogin();
             } else {
                 toast.error(res.errMessage);
@@ -167,7 +167,7 @@ const LoginWebPage = () => {
                         password: inputValues.password,
                     });
                     if (res && res.errCode === 0) {
-                        toast.success("Táº¡o tÃ i khoáº£n thÃ nh cÃ´ng");
+                        toast.success("Tạo tài khoản thành công");
                         handleLoginSocial(re.user.providerData[0].email);
                     } else {
                         toast.error(res.errMessage);
@@ -200,7 +200,7 @@ const LoginWebPage = () => {
                                 </a>
                                 <div className="heading">
                                     <h2>Mambo</h2>
-                                    <p>Mua là mê nay!</p>
+                                    <p>Mua là mê ngay!</p>
                                 </div>
                             </div>
                             {/* Form Box */}

@@ -245,7 +245,7 @@ async function computeRecommendationsForUser(userId, limit=10) {
       try {
         // [DISABLED CLIENT-SIDE SEND]
         // Re-enable by removing this conditional block.
-        if (['BMF','NeuMF'].includes(name)) {
+        if (['BMF','NeuMF','LNCM'].includes(name)) {
           console.log(`[RECO] Skipping Python call for disabled model ${name}`);
           parallel.push({ name, resp: { ok: false, error: 'disabled_client_side' } });
           continue;
@@ -385,6 +385,9 @@ async function computeRecommendationsForUser(userId, limit=10) {
 
 }
 
+// In-process guard to prevent concurrent recomputations per user
+const _recomputeInProgress = new Set();
+
 async function initForUser(userId, limit=10) {
   // Early role gate: only allow users with roleId 'R2'
   const userRow = await db.User.findOne({ where: { id: userId }, raw: true });
@@ -394,22 +397,40 @@ async function initForUser(userId, limit=10) {
   if ((userRow.roleId || '').toUpperCase() !== 'R2') {
     return { errCode: 2, message: 'User role not permitted for recommendations' };
   }
+  // Skip if a recomputation is already running for this user (debounce concurrent triggers)
+  if (_recomputeInProgress.has(userId)) {
+    return { errCode: 0, message: 'recompute_in_progress' };
+  }
+  _recomputeInProgress.add(userId);
+  const t = await db.sequelize.transaction();
   await ensureTables();
-  // clear previous
-  await db.Recommendation.destroy({ where: { userId } });
-  await db.ModelRun.destroy({ where: { userId } });
-  const { bestModel, top, modelRuns, error } = await computeRecommendationsForUser(userId, limit);
-  if (error) {
-    return { errCode: 3, message: error };
+  try {
+    // clear previous inside transaction
+    await db.Recommendation.destroy({ where: { userId }, transaction: t });
+    await db.ModelRun.destroy({ where: { userId }, transaction: t });
+    const { bestModel, top, modelRuns, error } = await computeRecommendationsForUser(userId, limit);
+    if (error) {
+      await t.rollback();
+      _recomputeInProgress.delete(userId);
+      return { errCode: 3, message: error };
+    }
+    // save cache (bulk, ignore duplicates for safety)
+    if (top && top.length) {
+      const recRows = top.map(item => ({ userId, productId: item.productId, modelName: bestModel, score: item.score || 0, details: null }));
+      await db.Recommendation.bulkCreate(recRows, { ignoreDuplicates: true, transaction: t });
+    }
+    if (modelRuns && modelRuns.length) {
+      const runRows = modelRuns.map(r => ({ userId, modelName: r.modelName, metricsJson: JSON.stringify(r.metrics||{}), recommendationsJson: JSON.stringify(r.recommendations||[]) }));
+      await db.ModelRun.bulkCreate(runRows, { ignoreDuplicates: true, transaction: t });
+    }
+    await t.commit();
+    return { bestModel };
+  } catch (e) {
+    try { await t.rollback(); } catch {}
+    return { errCode: 3, message: e?.message || String(e) };
+  } finally {
+    _recomputeInProgress.delete(userId);
   }
-  // save cache
-  for (const item of top) {
-    await db.Recommendation.create({ userId, productId: item.productId, modelName: bestModel, score: item.score || 0, details: null });
-  }
-  for (const r of modelRuns) {
-    await db.ModelRun.create({ userId, modelName: r.modelName, metricsJson: JSON.stringify(r.metrics||{}), recommendationsJson: JSON.stringify(r.recommendations||[]) });
-  }
-  return { bestModel };
 }
 
 async function getCachedForUser(userId, limit=10) {
