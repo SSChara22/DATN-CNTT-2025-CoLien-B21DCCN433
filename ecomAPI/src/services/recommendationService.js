@@ -182,6 +182,14 @@ async function buildUserProductFeatures(userId) {
 
 
 async function computeRecommendationsForUser(userId, limit=10) {
+  // Early role gate: only allow users with roleId 'R2'
+  const userRow = await db.User.findOne({ where: { id: userId }, raw: true });
+  if (!userRow) {
+    return { bestModel: null, top: [], modelRuns: [], error: 'User not found' };
+  }
+  if ((userRow.roleId || '').toUpperCase() !== 'R2') {
+    return { bestModel: null, top: [], modelRuns: [], error: 'User role not permitted for recommendations' };
+  }
   // Try Python inference first: evaluate trained models and select best by MAP@10 then Precision@10
   // Ground truth includes both cart and purchase interactions for better evaluation
   if (pythonInvoker) {
@@ -227,7 +235,10 @@ async function computeRecommendationsForUser(userId, limit=10) {
       category: null  // kept for backward compatibility
     };
 
-    const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
+    // Only run ENCM for now. To restore other models, replace the line below with the commented line after it.
+    const modelNames = ['ENCM'];
+    // [DISABLED TEMPORARILY] Also run other models:
+    // const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
     const k = Math.max(1, Math.min(10, limit));
 
     // Run the 4 model inferences sequentially
@@ -370,11 +381,22 @@ async function computeRecommendationsForUser(userId, limit=10) {
 }
 
 async function initForUser(userId, limit=10) {
+  // Early role gate: only allow users with roleId 'R2'
+  const userRow = await db.User.findOne({ where: { id: userId }, raw: true });
+  if (!userRow) {
+    return { errCode: 1, message: 'User not found' };
+  }
+  if ((userRow.roleId || '').toUpperCase() !== 'R2') {
+    return { errCode: 2, message: 'User role not permitted for recommendations' };
+  }
   await ensureTables();
   // clear previous
   await db.Recommendation.destroy({ where: { userId } });
   await db.ModelRun.destroy({ where: { userId } });
-  const { bestModel, top, modelRuns } = await computeRecommendationsForUser(userId, limit);
+  const { bestModel, top, modelRuns, error } = await computeRecommendationsForUser(userId, limit);
+  if (error) {
+    return { errCode: 3, message: error };
+  }
   // save cache
   for (const item of top) {
     await db.Recommendation.create({ userId, productId: item.productId, modelName: bestModel, score: item.score || 0, details: null });
