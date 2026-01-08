@@ -235,16 +235,21 @@ async function computeRecommendationsForUser(userId, limit=10) {
       category: null  // kept for backward compatibility
     };
 
-    // Only run ENCM for now. To restore other models, replace the line below with the commented line after it.
-    const modelNames = ['ENCM'];
-    // [DISABLED TEMPORARILY] Also run other models:
-    // const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
+    // Run all models for evaluation and selection
+    const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
     const k = Math.max(1, Math.min(10, limit));
 
     // Run the 4 model inferences sequentially
     const parallel = [];
     for (const name of modelNames) {
       try {
+        // [DISABLED CLIENT-SIDE SEND]
+        // Re-enable by removing this conditional block.
+        if (['BMF','NeuMF'].includes(name)) {
+          console.log(`[RECO] Skipping Python call for disabled model ${name}`);
+          parallel.push({ name, resp: { ok: false, error: 'disabled_client_side' } });
+          continue;
+        }
         console.log(`[RECO] Calling model ${name}...`);
         const resp = await pythonInvoker.runPythonInference({ user_id: userId, limit: k, model: name, context: ctxPayload });
         console.log(`[RECO] Model ${name} response:`, {

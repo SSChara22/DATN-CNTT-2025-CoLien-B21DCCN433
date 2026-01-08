@@ -94,7 +94,7 @@ class TrainedRecommendationSystem:
             sys.exit(1)
 
     def load_trained_models(self):
-        """Load pre-trained model weights (ENCM only; others disabled)"""
+        """Load pre-trained model weights"""
         try:
             # Prefer training-time configs to match checkpoint shapes
             def _load_json(path):
@@ -104,10 +104,10 @@ class TrainedRecommendationSystem:
                 except Exception:
                     return None
 
-            # [DISABLED TEMPORARILY] BMF/LNCM/NeuMF
-            # bmf_cfg = _load_json('models/bmf_config.json')
-            # neumf_cfg = _load_json('models/neumf_config.json')
-            # lncm_cfg = _load_json('models/lncm_config.json')
+            # Load configs for all models
+            bmf_cfg = _load_json('models/bmf_config.json')
+            neumf_cfg = _load_json('models/neumf_config.json')
+            lncm_cfg = _load_json('models/lncm_config.json')
             encm_cfg = _load_json('models/encm_config.json')
 
             # ENCM with training model class and context dims
@@ -136,8 +136,77 @@ class TrainedRecommendationSystem:
                 hidden_dims=hidden_dims
             )
 
-            # Try load ENCM weights; set Popularity fallback if fails
+            # Try load BMF/LNCM/NeuMF/ENCM weights; set Popularity fallback if fails
             loaded_any = False
+
+            # BMF
+            # [DISABLED] 
+            # try:
+            #     if bmf_cfg is None:
+            #         bmf_cfg = {
+            #             'n_users': self.data_stats.get('n_users'),
+            #             'n_items': self.data_stats.get('n_items'),
+            #             'embedding_dim': 50,
+            #         }
+            #     self.models['BMF'] = BMF(
+            #         n_users=bmf_cfg.get('n_users', self.data_stats['n_users']),
+            #         n_items=bmf_cfg.get('n_items', self.data_stats['n_items']),
+            #         embedding_dim=bmf_cfg.get('embedding_dim', 50),
+            #     )
+            #     _bmf = self.models['BMF']
+            #     _bmf.build([(None,), (None,)])
+            #     _bmf.load_weights('models/bmf_model.h5')
+            #     loaded_any = True
+            # except Exception:
+            #     if 'BMF' in self.models:
+            #         del self.models['BMF']
+
+            # LNCM
+            try:
+                if lncm_cfg is None:
+                    lncm_cfg = {
+                        'n_users': self.data_stats.get('n_users'),
+                        'n_items': self.data_stats.get('n_items'),
+                        'embedding_dim': 50,
+                        'hidden_dims': [64, 32],
+                    }
+                self.models['LNCM'] = LNCM(
+                    n_users=lncm_cfg.get('n_users', self.data_stats['n_users']),
+                    n_items=lncm_cfg.get('n_items', self.data_stats['n_items']),
+                    embedding_dim=lncm_cfg.get('embedding_dim', 50),
+                    hidden_dims=lncm_cfg.get('hidden_dims', [64, 32]),
+                )
+                _lncm = self.models['LNCM']
+                _lncm.build([(None,), (None,)])
+                _lncm.load_weights('models/lncm_model.h5')
+                loaded_any = True
+            except Exception:
+                if 'LNCM' in self.models:
+                    del self.models['LNCM']
+
+            # NeuMF
+            # [DISABLED]
+            # try:
+            #     if neumf_cfg is None:
+            #         neumf_cfg = {
+            #             'n_users': self.data_stats.get('n_users'),
+            #             'n_items': self.data_stats.get('n_items'),
+            #             'embedding_dim': 50,
+            #             'hidden_dims': [64, 32, 16],
+            #         }
+            #     self.models['NeuMF'] = NeuMF(
+            #         n_users=neumf_cfg.get('n_users', self.data_stats['n_users']),
+            #         n_items=neumf_cfg.get('n_items', self.data_stats['n_items']),
+            #         embedding_dim=neumf_cfg.get('embedding_dim', 50),
+            #         hidden_dims=neumf_cfg.get('hidden_dims', [64, 32, 16]),
+            #     )
+            #     _neumf = self.models['NeuMF']
+            #     _neumf.build([(None,), (None,)])
+            #     _neumf.load_weights('models/neumf_model.h5')
+            #     loaded_any = True
+            # except Exception:
+            #     if 'NeuMF' in self.models:
+            #         del self.models['NeuMF']
             try:
                 model = self.models.get('ENCM')
                 if model is not None:
@@ -240,8 +309,8 @@ class TrainedRecommendationSystem:
         """Get recommendations for a user using specified model"""
         try:
             if model_name not in self.models:
-                # Choose best available fallback order (only ENCM or Popularity)
-                for alt in ['ENCM', 'Popularity']:
+                # Choose best available fallback order
+                for alt in ['ENCM', 'LNCM', 'NeuMF', 'BMF', 'Popularity']:
                     if alt in self.models:
                         model_name = alt
                         break
@@ -360,6 +429,13 @@ class TrainedRecommendationSystem:
                 context_features = np.array(context_features, dtype=np.int32)
                 with SuppressOutput():
                     predictions = model.predict([user_indices, item_indices, context_features], batch_size=32, verbose=0)
+            elif model_name == 'LNCM':
+                # Two-input model without explicit context (LNCM active)
+                with SuppressOutput():
+                    predictions = model.predict([user_indices, item_indices], batch_size=32, verbose=0)
+            elif model_name in ['BMF', 'NeuMF']:
+                with SuppressOutput():
+                    predictions = model.predict([user_indices, item_indices], batch_size=32, verbose=0)
             else:
                 # Popularity fallback or explicit Popularity
                 try:
