@@ -56,7 +56,7 @@ function DetailProductPage(props) {
     };
     let fetchProductFeature = async (userId) => {
         let res = await getProductRecommendService({
-            limit: 20,
+            limit: 10,
             userId: userId,
         });
         if (res && res.errCode === 0) {

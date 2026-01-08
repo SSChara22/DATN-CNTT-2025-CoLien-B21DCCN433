@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { useState } from "react";
 import { toast } from "react-toastify";
 import "./LoginWebPage.css";
@@ -11,6 +11,7 @@ import {
     checkPhonenumberEmail,
     createNewUser,
 } from "../../services/userService";
+import { initRecommendationsService } from '../../services/userService';
 
 import { authentication } from "../../utils/firebase";
 import {
@@ -44,8 +45,18 @@ const LoginWebPage = () => {
         if (res && res.errCode === 0) {
             localStorage.setItem("userData", JSON.stringify(res.user));
             localStorage.setItem("token", JSON.stringify(res.accessToken));
+
+            try {
+                // Gọi init – backend sẽ chạy 4 mô hình, chọn best, cache top-10
+                await initRecommendationsService(10);
+            } catch (e) {
+                // Không chặn quá trình login nếu recommend lỗi
+            }
+
             if (res.user.roleId === "R1" || res.user.roleId === "R4") {
                 window.location.href = "/admin";
+            } else if (res.user.roleId === "R3") {
+                window.location.href = "/shipper";
             } else {
                 window.location.href = "/";
             }
@@ -66,8 +77,15 @@ const LoginWebPage = () => {
         if (res && res.errCode === 0) {
             localStorage.setItem("userData", JSON.stringify(res.user));
             localStorage.setItem("token", JSON.stringify(res.accessToken));
+
+            try {
+                await initRecommendationsService(10);
+            } catch (e) {}
+
             if (res.user.roleId === "R1" || res.user.roleId === "R4") {
                 window.location.href = "/admin";
+            } else if (res.user.roleId === "R3") {
+                window.location.href = "/shipper";
             } else {
                 window.location.href = "/";
             }
@@ -75,7 +93,6 @@ const LoginWebPage = () => {
             toast.error(res.errMessage);
         }
     };
-
     let handleSaveUser = async () => {
         const element = document.querySelector("form");
         element.addEventListener("submit", (event) => {
@@ -97,7 +114,7 @@ const LoginWebPage = () => {
                 roleId: "R2",
             });
             if (res && res.errCode === 0) {
-                toast.success("Tạo tài khoản thành công");
+                toast.success("Táº¡o tÃ i khoáº£n thÃ nh cÃ´ng");
                 handleLogin();
             } else {
                 toast.error(res.errMessage);
@@ -150,7 +167,7 @@ const LoginWebPage = () => {
                         password: inputValues.password,
                     });
                     if (res && res.errCode === 0) {
-                        toast.success("Tạo tài khoản thành công");
+                        toast.success("Táº¡o tÃ i khoáº£n thÃ nh cÃ´ng");
                         handleLoginSocial(re.user.providerData[0].email);
                     } else {
                         toast.error(res.errMessage);
@@ -183,7 +200,7 @@ const LoginWebPage = () => {
                                 </a>
                                 <div className="heading">
                                     <h2>Mambo</h2>
-                                    <p>Mua là mê ngay!</p>
+                                    <p>Mua là mê nay!</p>
                                 </div>
                             </div>
                             {/* Form Box */}
@@ -193,7 +210,7 @@ const LoginWebPage = () => {
                                     <form className="login-form">
                                         <div className="form-group">
                                             <label htmlFor="loginemail">
-                                                Địa chỉ email
+                                                Email
                                             </label>
                                             <input
                                                 name="email"
@@ -234,8 +251,8 @@ const LoginWebPage = () => {
                                                 Tài khoản mới
                                             </a>
                                         </div>
-                                        <FacebookLoginButton
-                                            text="Đăng nhập với Facebook"
+                                        {/* <FacebookLoginButton
+                                            text="ÄÄƒng nháº­p vá»›i Facebook"
                                             iconSize="25px"
                                             style={{
                                                 width: "300px",
@@ -247,7 +264,7 @@ const LoginWebPage = () => {
                                             onClick={() => signInwithFacebook()}
                                         />
                                         <GoogleLoginButton
-                                            text="Đăng nhập với Google"
+                                            text="ÄÄƒng nháº­p vá»›i Google"
                                             iconSize="25px"
                                             style={{
                                                 width: "300px",
@@ -255,7 +272,7 @@ const LoginWebPage = () => {
                                                 fontSize: "16px",
                                             }}
                                             onClick={() => signInwithGoogle()}
-                                        />
+                                        /> */}
                                     </form>
                                 </div>
                                 {/* End Login Form */}
@@ -280,7 +297,7 @@ const LoginWebPage = () => {
 
                                         <div className="form-group">
                                             <label htmlFor="email">
-                                                Địa chỉ email
+                                                Địa chỉ Email
                                             </label>
                                             <input
                                                 type="email"
@@ -361,3 +378,4 @@ const LoginWebPage = () => {
     );
 };
 export default LoginWebPage;
+

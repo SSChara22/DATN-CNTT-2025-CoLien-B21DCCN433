@@ -1,5 +1,5 @@
 {
-  "n_users": 200,
-  "n_items": 500,
+  "n_users": 21,
+  "n_items": 30,
   "embedding_dim": 50
 }

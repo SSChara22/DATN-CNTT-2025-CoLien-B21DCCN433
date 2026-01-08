@@ -1,14 +1,7 @@
 'use strict';
-const {
-    Model
-} = require('sequelize');
+const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class User extends Model {
-        /**
-         * Helper method for defining associations.
-         * This method is not a part of Sequelize lifecycle.
-         * The `models/index` file will call this method automatically.
-         */
         static associate(models) {
             User.belongsTo(models.Allcode, { foreignKey: 'genderId', targetKey: 'code', as: 'genderData' })
             User.belongsTo(models.Allcode, { foreignKey: 'roleId', targetKey: 'code', as: 'roleData' })
@@ -28,7 +21,6 @@ module.exports = (sequelize, DataTypes) => {
         roleId: DataTypes.STRING,
         statusId: DataTypes.STRING,
         usertoken: DataTypes.STRING,
-
     }, {
         sequelize,
         modelName: 'User',

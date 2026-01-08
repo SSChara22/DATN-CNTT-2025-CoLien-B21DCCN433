@@ -2,8 +2,15 @@ import db from "../models/index";
 import fs from "fs";
 import path from "path";
 import moment from "moment";
-const { Op } = require("sequelize");
+const { Op } = db.Sequelize;
 
+// Optional Python inference bridge (default export)
+let pythonInvoker = null;
+try {
+  pythonInvoker = require("./pythonInvoker.js").default;
+} catch (e) {
+  pythonInvoker = null;
+}
 const ROOT = path.resolve(__dirname, "../../..");
 const PERF_CSV = path.join(ROOT, "processed_data", "model_performance.csv");
 
@@ -173,9 +180,119 @@ async function buildUserProductFeatures(userId) {
   return results;
 }
 
-async function computeRecommendationsForUser(userId, limit=5) {
+
+async function computeRecommendationsForUser(userId, limit=10) {
+  // Try Python inference first: evaluate trained models and select best by MAP@10 then Precision@10
+  // Ground truth includes both cart and purchase interactions for better evaluation
+  if (pythonInvoker) {
+    // Use both purchase and cart as ground truth for evaluation
+    const gtInteractions = await db.Interaction.findAll({
+      where: {
+        userId,
+        actionCode: { [Op.in]: ['purchase', 'cart'] }
+      },
+      attributes: ['productId'],
+      raw: true
+    });
+    const gtSet = new Set(gtInteractions.map(r => r.productId));
+    const nowCtx = deriveContext(new Date());
+    const lastInter = await db.Interaction.findOne({ where: { userId }, order: [['timestamp','DESC']], raw: true });
+
+    // Get user information for richer context
+    const user = await db.User.findOne({ where: { id: userId }, raw: true });
+    const gender = user?.genderId || null;
+
+    // Get user's interaction history for preferences
+    const userInteractions = await db.Interaction.findAll({
+      where: { userId, actionCode: { [Op.in]: ['cart', 'purchase'] } },
+      include: [{ model: db.Product, as: 'productData', attributes: ['categoryId', 'brandId'] }],
+      raw: true, nest: true, limit: 50, order: [['timestamp', 'DESC']]
+    });
+
+    // Extract preferred categories and brands
+    const categoryPrefs = new Set();
+    const brandPrefs = new Set();
+    for (const inter of userInteractions) {
+      if (inter.productData?.categoryId) categoryPrefs.add(inter.productData.categoryId);
+      if (inter.productData?.brandId) brandPrefs.add(inter.productData.brandId);
+    }
+
+    const ctxPayload = {
+      time_of_day: nowCtx.time_of_day,
+      season: nowCtx.season,
+      device_type: lastInter?.device_type || 'unknown',
+      gender: gender,
+      preferred_categories: Array.from(categoryPrefs),
+      preferred_brands: Array.from(brandPrefs),
+      category: null  // kept for backward compatibility
+    };
+
+    const modelNames = ['ENCM','LNCM','NeuMF','BMF'];
+    const k = Math.max(1, Math.min(10, limit));
+
+    // Run the 4 model inferences sequentially
+    const parallel = [];
+    for (const name of modelNames) {
+      try {
+        console.log(`[RECO] Calling model ${name}...`);
+        const resp = await pythonInvoker.runPythonInference({ user_id: userId, limit: k, model: name, context: ctxPayload });
+        console.log(`[RECO] Model ${name} response:`, {
+          ok: resp.ok,
+          hasItems: resp.items && Array.isArray(resp.items),
+          itemsLength: resp.items ? resp.items.length : 0,
+          error: resp.error
+        });
+        parallel.push({ name, resp });
+      } catch (e) {
+        console.log(`[RECO] Model ${name} exception:`, e);
+        parallel.push({ name, resp: { ok: false, error: e?.message || String(e) } });
+      }
+    }
+
+    console.log(`[RECO] All responses:`, parallel.map(p => ({ name: p.name, ok: p.resp.ok, error: p.resp.error })));
+    const modelRuns = [];
+    for (const { name, resp } of parallel) {
+      let recs = [];
+      if (resp && resp.ok && Array.isArray(resp.items)) {
+        recs = resp.items.map(it => ({ productId: it.productId, score: it.score || 0 }));
+      }
+      let hits = 0; let sumPrec = 0;
+      const denom = Math.max(1, Math.min(k, gtSet.size || 0));
+      for (let i = 0; i < Math.min(k, recs.length); i++) {
+        const rel = gtSet.has(recs[i].productId) ? 1 : 0;
+        if (rel) { hits += 1; sumPrec += hits / (i + 1); }
+      }
+      const precision10 = recs.length ? (hits / k) : 0;
+      const map10 = denom ? (sumPrec / denom) : 0;
+      modelRuns.push({ modelName: name, recommendations: recs.slice(0, k), metrics: { mode: 'python_infer', precision10, map10 } });
+    }
+    modelRuns.sort((a,b)=> (b.metrics.map10 - a.metrics.map10) || (b.metrics.precision10 - a.metrics.precision10));
+    if (modelRuns.length) {
+      const best = modelRuns[0];
+      return { bestModel: best.modelName, top: best.recommendations, modelRuns };
+    }
+    // fall through to heuristic if Python failed
+  } else {
+    console.log(`[RECO] Python invoker not available, falling back to heuristic`);
+  }
+
+  console.log(`[RECO] Using heuristic recommendation approach`);
+
   // Generate multiple DB-scoring variants and choose best
+  const perModelLimit = 10; // each model should output 10 items
   const base = await buildUserProductFeatures(userId);
+
+  // Use same ground truth as Python evaluation
+  const gtInteractions = await db.Interaction.findAll({
+    where: {
+      userId,
+      actionCode: { [Op.in]: ['purchase', 'cart'] }
+    },
+    attributes: ['productId'],
+    raw: true
+  });
+  const gtSet = new Set(gtInteractions.map(r => r.productId));
+
   const likedInter = await db.Interaction.findAll({
     where: { userId, actionCode: { [Op.in]: ['cart','purchase'] } },
     include: [{ model: db.Product, as: 'productData', attributes: ['id','categoryId','brandId'] }],
@@ -205,8 +322,8 @@ async function computeRecommendationsForUser(userId, limit=5) {
   }
 
   async function backfillTop(scoredItems){
-    let top = scoredItems.slice(0, limit).map(x=>({ productId:x.productId, score:x.score }));
-    if (top.length >= limit) return top;
+    let top = scoredItems.slice(0, perModelLimit).map(x=>({ productId:x.productId, score:x.score }));
+    if (top.length >= perModelLimit) return top;
     const existing = new Set(top.map(t=>t.productId));
     if (catSet.size || brandSet.size){
       const sameCatOrBrand = await db.Product.findAll({
@@ -218,12 +335,12 @@ async function computeRecommendationsForUser(userId, limit=5) {
           ].filter(Boolean)
         }, order: [['view','DESC']], attributes:['id'], raw:true
       });
-      for (const p of sameCatOrBrand){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===limit) break; }
+      for (const p of sameCatOrBrand){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===perModelLimit) break; }
     }
-    if (top.length < limit){
-      const need = limit-top.length;
+    if (top.length < perModelLimit){
+      const need = perModelLimit-top.length;
       const popular = await db.Product.findAll({ where:{ statusId:'S1', id:{ [Op.notIn]: Array.from(existing) } }, order:[['view','DESC']], limit: need, attributes:['id'], raw:true });
-      for (const p of popular){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===limit) break; }
+      for (const p of popular){ if (!existing.has(p.id)){ top.push({productId:p.id, score:0.0}); existing.add(p.id);} if (top.length===perModelLimit) break; }
     }
     return top;
   }
@@ -249,9 +366,10 @@ async function computeRecommendationsForUser(userId, limit=5) {
   modelRuns.sort((a,b)=> (b.metrics.intentHigh - a.metrics.intentHigh) || (b.metrics.aligned - a.metrics.aligned) || (b.metrics.avgScore - a.metrics.avgScore));
   const best = modelRuns[0];
   return { bestModel: best.modelName, top: best.recommendations, modelRuns };
+
 }
 
-async function initForUser(userId, limit=5) {
+async function initForUser(userId, limit=10) {
   await ensureTables();
   // clear previous
   await db.Recommendation.destroy({ where: { userId } });
@@ -267,7 +385,7 @@ async function initForUser(userId, limit=5) {
   return { bestModel };
 }
 
-async function getCachedForUser(userId, limit=5) {
+async function getCachedForUser(userId, limit=10) {
   await ensureTables();
   const rows = await db.Recommendation.findAll({ where: { userId }, order: [['score', 'DESC']], limit, raw: true });
   return rows;

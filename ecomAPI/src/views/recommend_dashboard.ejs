@@ -6,9 +6,9 @@
   <title>Recommendation Dashboard</title>
   <style>
     :root { color-scheme: light; }
-    html, body { background: #ffffff; color: #0f172a; }
+    html, body { background: #ffffff; color: #0f172a; height: auto; min-height: 100vh; overflow-y: auto; }
     body { font-family: system-ui, sans-serif; margin: 16px; }
-    .container { max-width: 1280px; margin: 0 auto; }
+    .container { max-width: 1280px; margin: 16px auto; }
     h1 { margin: 0 0 8px 0; color: #0f172a; }
     .kpis { display: flex; gap: 12px; margin: 8px 0 16px; }
     .kpi { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background:#ffffff; color:#0f172a; }
@@ -32,13 +32,69 @@
     </div>
 
     <div class="section">
+      <h2>User Context</h2>
+      <div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
+        <% let ctx = {}; try { ctx = JSON.parse(typeof context !== 'undefined' ? context : '{}') } catch(e) {} %>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
+          <div>
+            <strong>Giới tính:</strong>
+            <% const genderMap = {0: 'Nam', 1: 'Nữ', 2: 'Khác', 3: 'Không xác định'} %>
+            <span class="tag"><%= genderMap[ctx.gender] || 'Không xác định' %></span>
+          </div>
+          <div>
+            <strong>Thiết bị:</strong>
+            <span class="tag"><%= ctx.device_type || 'Không xác định' %></span>
+          </div>
+          <div>
+            <strong>Thời gian trong ngày:</strong>
+            <% const timeMap = {0: 'Đêm', 1: 'Sáng', 2: 'Chiều', 3: 'Tối'} %>
+            <span class="tag"><%= timeMap[ctx.time_of_day] || 'Không xác định' %></span>
+          </div>
+          <div>
+            <strong>Mùa:</strong>
+            <% const seasonMap = {0: 'Đông', 1: 'Xuân', 2: 'Hè', 3: 'Thu'} %>
+            <span class="tag"><%= seasonMap[ctx.season] || 'Không xác định' %></span>
+          </div>
+          <div>
+            <strong>Giờ:</strong>
+            <span class="tag"><%= ctx.hour || 'N/A' %>:00</span>
+          </div>
+          <div>
+            <strong>Tháng:</strong>
+            <span class="tag">Tháng <%= ctx.month || 'N/A' %></span>
+          </div>
+        </div>
+
+        <% if (ctx.preferred_categories && ctx.preferred_categories.length) { %>
+        <div style="margin-top: 12px;">
+          <strong>Danh mục ưa thích:</strong>
+          <% ctx.preferred_categories.forEach(cat => { %>
+            <span class="tag" style="margin-right: 4px;"><%= cat %></span>
+          <% }) %>
+        </div>
+        <% } %>
+
+        <% if (ctx.preferred_brands && ctx.preferred_brands.length) { %>
+        <div style="margin-top: 8px;">
+          <strong>Thương hiệu ưa thích:</strong>
+          <% ctx.preferred_brands.forEach(brand => { %>
+            <span class="tag" style="margin-right: 4px;"><%= brand %></span>
+          <% }) %>
+        </div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Cached Top Recommendations</h2>
       <% if (cached && cached.length) { %>
         <table>
           <thead>
             <tr>
               <th>#</th>
-              <th>ProductId</th>
+              <th>Product ID</th>
+              <th>Tên sản phẩm</th>
+              <th>Hãng</th>
               <th>Model</th>
               <th>Score</th>
             </tr>
@@ -48,6 +104,8 @@
               <tr class="<%= (bestModelName && r.modelName===bestModelName) ? 'best' : '' %>">
                 <td><%= idx+1 %></td>
                 <td><%= r.productId %></td>
+                <td><%= r.productName || 'Unknown Product' %></td>
+                <td><%= r.brandName || 'Unknown Brand' %></td>
                 <td><%= r.modelName %></td>
                 <td><%= (r.score||0).toFixed(4) %></td>
               </tr>
@@ -68,7 +126,7 @@
               <th>Time</th>
               <th>Model</th>
               <th>Metrics</th>
-              <th>Top-N (productId:score)</th>
+              <th>Top-N Recommendations</th>
             </tr>
           </thead>
           <tbody>
@@ -76,8 +134,23 @@
               <tr class="<%= (bestModelName && run.modelName===bestModelName) ? 'best' : '' %>">
                 <td><%= new Date(run.createdAt).toLocaleString() %></td>
                 <td><span class="tag"><%= run.modelName %></span></td>
-                <td><code><%= (run.metricsJson||'{}') %></code></td>
-                <td><code><%= (run.recommendationsJson||'[]') %></code></td>
+                <td>
+                  <% let m = {}; try { m = JSON.parse(run.metricsJson||'{}') } catch(e) {} %>
+                  <div>mode: <code><%= m.mode || '-' %></code></div>
+                  <div>MAP@10: <strong><%= (m.map10!=null ? m.map10.toFixed(4) : '-') %></strong></div>
+                  <div>Precision@10: <strong><%= (m.precision10!=null ? m.precision10.toFixed(4) : '-') %></strong></div>
+                </td>
+                <td>
+                  <% let recs = []; try{ recs = JSON.parse(run.recommendationsJson||'[]') }catch(e){} %>
+                  <div style="max-height: 120px; overflow-y: auto;">
+                    <% recs.forEach(function(r, idx){ %>
+                      <div style="margin-bottom: 4px; padding: 4px; background: #f8fafc; border-radius: 4px;">
+                        <strong>#<%= idx+1 %></strong> <%= r.productName || 'Unknown' %> (<%= r.brandName || 'Unknown Brand' %>)<br>
+                        <small>ID: <%= r.productId %> | Score: <code><%= (r.score||0).toFixed(3) %></code></small>
+                      </div>
+                    <% }) %>
+                  </div>
+                </td>
               </tr>
             <% }) %>
           </tbody>

@@ -17,6 +17,7 @@ import LoginWebPage from "./container/Login/LoginWebPage";
 import UserHomePage from "./container/User/UseHomePage";
 import VoucherHomePage from "./container/Voucher/VoucherHomePage";
 import OrderHomePage from "./container/Order/OrderHomePage";
+import HomePageShipper from "./container/Shipper/HomePageShipper";
 import TopMenu from "./container/Header/TopMenu";
 import PaymentSuccess from "./container/User/PaymentSuccess";
 import VnpayPaymentPage from "./container/Order/VnpayPaymentPage";
@@ -81,7 +82,7 @@ function App() {
                     path="/payment/vnpay"
                     element={
                         <>
-                            <TopMenu />
+                            <Header />
                             <VnpayPaymentPage />
                             <Footer />
                         </>
@@ -91,7 +92,7 @@ function App() {
                     path="/payment/vnpay_return"
                     element={
                         <>
-                            <TopMenu />
+                            <Header />
                             <VnpayPaymentSuccess />
                             <Footer />
                         </>
@@ -187,10 +188,21 @@ function App() {
                     }
                 />
                 <Route
+                    path="/shipper/*"
+                    element={
+                        JSON.parse(localStorage.getItem("userData")) &&
+                        JSON.parse(localStorage.getItem("userData")).roleId === "R3" ? (
+                            <HomePageShipper />
+                        ) : (
+                            <Navigate to="/login" />
+                        )
+                    }
+                />
+                <Route
                     path="/order/:userId"
                     element={
                         <>
-                            <TopMenu />
+                            <Header />
                             <OrderHomePage />
                             <Footer />
                         </>

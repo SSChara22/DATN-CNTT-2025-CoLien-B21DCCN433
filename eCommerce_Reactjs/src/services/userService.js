@@ -161,10 +161,10 @@ const getProductRecommendService = (data) => {
     return axios.get(`/api/get-product-recommend?userId=${data.userId}&limit=${data.limit}`)
 }
 // Recommendation (auth required)
-const initRecommendationsService = (limit=5) => {
+const initRecommendationsService = (limit=10) => {
     return axios.post(`/api/recommend/init?limit=${limit}`)
 }
-const listRecommendationsService = (limit=5) => {
+const listRecommendationsService = (limit=10) => {
     return axios.get(`/api/recommend/list?limit=${limit}`)
 }
 const clearRecommendationsService = () => {
@@ -302,9 +302,19 @@ const getDetailOrder = (id) => {
 const updateStatusOrderService = (data) => {
     return axios.put(`/api/update-status-order`, data)
 }
+const updateImageOrderService = (data) => {
+    return axios.put('/api/update-image-order', data);
+};
+
 
 const getAllOrdersByUser = (userId) => {
     return axios.get(`/api/get-all-order-by-user?userId=${userId}`)
+}
+const getAllOrdersByShipper = (data) => {
+    let params = new URLSearchParams();
+    if (data.shipperId) params.append('shipperId', data.shipperId);
+    if (data.status) params.append('status', data.status);
+    return axios.get(`/api/get-all-order-by-shipper?${params.toString()}`)
 }
 const paymentOrderService = (data) => {
     return axios.post(`/api/payment-order`, data)
@@ -458,11 +468,11 @@ export {
     getProductFeatureService, getProductNewService, saveUserVoucherService, getAllVoucherByUserIdService, addShopCartService,
     getAllShopCartByUserIdService, deleteItemShopCartService, createNewOrderService, createNewAddressUserrService, getAllAddressUserByUserIdService,
     deleteAddressUserService, editAddressUserService, getDetailAddressUserByIdService, getAllOrder, getDetailOrder, updateStatusOrderService,
-    getAllOrdersByUser, paymentOrderService, paymentOrderSuccessService, createNewRoom, sendMessage, loadMessage, listRoomOfUser, listRoomOfAdmin, getAllCategoryBlogService,
+    getAllOrdersByUser, getAllOrdersByShipper, paymentOrderService, paymentOrderSuccessService, createNewRoom, sendMessage, loadMessage, listRoomOfUser, listRoomOfAdmin, getAllCategoryBlogService,
     createNewcommentService, getAllcommentByBlogIdService, ReplycommentService, deletecommentService, getFeatureBlog, getNewBlog, getCountCardStatistic, getCountStatusOrder,
     getStatisticByMonth, getStatisticByDay, checkPhonenumberEmail, createNewSupplierService, updateSupplierService, deleteSupplierService, getDetailSupplierByIdService,
     getAllSupplier, createNewReceiptService, getAllReceipt, getDetailReceiptByIdService, deleteReceiptService, updateReceiptService, createNewReceiptDetailService,
     getStatisticOverturn, getStatisticProfit, getProductShopcartService, getDetailUserByEmail, getProductRecommendService,
     getStatisticStockProduct, getExchangeRate, paymentOrderVnpayService, confirmOrderVnpay, paymentOrderVnpaySuccessService,
-    initRecommendationsService, listRecommendationsService, clearRecommendationsService
+    initRecommendationsService, listRecommendationsService, clearRecommendationsService, updateImageOrderService
 }

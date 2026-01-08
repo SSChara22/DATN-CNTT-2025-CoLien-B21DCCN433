@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fashion Recommendation System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .main-container {
+            padding: 40px 0;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .control-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+        
+        .form-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .btn-recommend {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: transform 0.2s;
+            color: white;
+        }
+        
+        .btn-recommend:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+        }
+        
+        .btn-compare {
+            background: linear-gradient(135deg, #a55eea 0%, #26de81 100%);
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: transform 0.2s;
+            color: white;
+        }
+        
+        .btn-compare:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(165, 94, 234, 0.4);
+        }
+        
+        .results-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: none;
+        }
+        
+        .model-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        
+        .badge-encm { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; }
+        .badge-neumf { background: linear-gradient(135deg, #a55eea 0%, #26de81 100%); color: white; }
+        .badge-lncm { background: linear-gradient(135deg, #45b7d1 0%, #96c93d 100%); color: white; }
+        .badge-bmf { background: linear-gradient(135deg, #fd79a8 0%, #fdcb6e 100%); color: white; }
+        
+        .item-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border-left: 4px solid #ff6b6b;
+        }
+        
+        .item-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .item-rank {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        
+        .rating-badge {
+            background: #ffc107;
+            color: #333;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .price-badge {
+            background: #28a745;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .discount-badge {
+            background: #dc3545;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+        
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        
+        .context-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .compare-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .model-results {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        
+        .user-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container main-container">
+        <!-- Header -->
+        <div class="header">
+            <h1><i class="fas fa-tshirt"></i> Fashion Recommendation System</h1>
+            <p>Personalized fashion recommendations using real user data & AI models</p>
+        </div>
+        
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <h3 class="mb-4"><i class="fas fa-sliders-h"></i> Configuration</h3>
+            
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Select User</label>
+                    <select class="form-select" id="userSelect">
+                        <option value="">Choose a user...</option>
+                        {% for user in users %}
+                        <option value="{{ user }}">User {{ user }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Select Model</label>
+                    <select class="form-select" id="modelSelect">
+                        {% for model in models %}
+                        <option value="{{ model }}" {% if model == 'ENCM' %}selected{% endif %}>{{ model }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Number of Recommendations</label>
+                    <input type="number" class="form-control" id="topK" value="10" min="1" max="20">
+                </div>
+            </div>
+            
+            <!-- Context Features -->
+            <div class="context-section">
+                <h5 class="mb-3"><i class="fas fa-cog"></i> Context Preferences</h5>
+                <div class="row" id="contextFeatures">
+                    <!-- Context features will be added dynamically -->
+                </div>
+            </div>
+            
+            <!-- User Info -->
+            <div class="user-info" id="userInfo" style="display: none;">
+                <h6><i class="fas fa-user"></i> User Profile</h6>
+                <div id="userProfileData"></div>
+            </div>
+            
+            <div class="mt-4">
+                <button class="btn btn-recommend me-3" onclick="getRecommendations()">
+                    <i class="fas fa-magic"></i> Get Recommendations
+                </button>
+                <button class="btn btn-compare" onclick="compareModels()">
+                    <i class="fas fa-chart-bar"></i> Compare All Models
+                </button>
+                <button class="btn btn-outline-secondary" onclick="showUserProfile()">
+                    <i class="fas fa-user-circle"></i> View User Profile
+                </button>
+            </div>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner-border text-light" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-white mt-3">Generating fashion recommendations...</p>
+        </div>
+        
+        <!-- Results -->
+        <div class="results-container" id="results">
+            <h3 class="mb-4"><i class="fas fa-list"></i> Fashion Recommendations</h3>
+            <div id="recommendationsList"></div>
+        </div>
+        
+        <!-- Comparison Results -->
+        <div class="results-container" id="comparisonResults">
+            <h3 class="mb-4"><i class="fas fa-chart-bar"></i> Model Comparison</h3>
+            <div class="compare-grid" id="comparisonGrid"></div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize context options from Flask
+        const contextOptions = JSON.parse('{{ context_options | tojson | safe }}');
+        const contextContainer = document.getElementById('contextFeatures');
+
+        // Create context controls
+        const contextControls = [
+            {
+                key: 'time_of_day',
+                label: 'Time of Day',
+                type: 'select',
+                options: contextOptions.time_of_day
+            },
+            {
+                key: 'season',
+                label: 'Season',
+                type: 'select',
+                options: contextOptions.season
+            },
+            {
+                key: 'device_type',
+                label: 'Device Type',
+                type: 'select',
+                options: contextOptions.device_type
+            },
+            {
+                key: 'category',
+                label: 'Fashion Category',
+                type: 'select',
+                options: contextOptions.category
+            }
+        ];
+
+        // Render context controls
+        contextControls.forEach(control => {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 mb-3';
+
+            if (control.type === 'select') {
+                const options = control.options.map(option => 
+                    `<option value="${option}">${option.charAt(0).toUpperCase() + option.slice(1)}</option>`
+                ).join('');
+                
+                col.innerHTML = `
+                    <label class="form-label">${control.label}</label>
+                    <select class="form-select" id="context_${control.key}">
+                        <option value="">Any ${control.label.toLowerCase()}...</option>
+                        ${options}
+                    </select>
+                `;
+            }
+
+            contextContainer.appendChild(col);
+        });
+
+        function getContextValues() {
+            const context = {};
+            contextControls.forEach(control => {
+                const el = document.getElementById(`context_${control.key}`);
+                if (el && el.value) {
+                    context[control.key] = el.value;
+                }
+            });
+            return context;
+        }
+
+        async function showUserProfile() {
+            const userId = document.getElementById('userSelect').value;
+            if (!userId) {
+                alert('Please select a user first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/user_profile/${userId}`);
+                const profile = await response.json();
+                
+                if (profile.error) {
+                    alert('Error: ' + profile.error);
+                    return;
+                }
+
+                const userInfo = document.getElementById('userInfo');
+                const profileData = document.getElementById('userProfileData');
+                
+                profileData.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small><strong>Total Interactions:</strong> ${profile.total_interactions}</small><br>
+                            <small><strong>Average Rating:</strong> ${profile.avg_rating.toFixed(2)}</small><br>
+                            <small><strong>Average Price:</strong> $${profile.avg_price.toFixed(0)}</small>
+                        </div>
+                        <div class="col-md-6">
+                            <small><strong>Top Categories:</strong> ${Object.entries(profile.categories).slice(0, 3).map(([cat, count]) => `${cat} (${count})`).join(', ')}</small><br>
+                            <small><strong>Favorite Brands:</strong> ${Object.entries(profile.brands).slice(0, 3).map(([brand, count]) => `${brand} (${count})`).join(', ')}</small>
+                        </div>
+                    </div>
+                `;
+                
+                userInfo.style.display = 'block';
+                
+            } catch (error) {
+                alert('Error loading user profile: ' + error.message);
+            }
+        }
+
+        document.getElementById('userSelect').addEventListener('change', () => {
+            const userId = document.getElementById('userSelect').value;
+            if (userId) {
+                showUserProfile();
+            } else {
+                document.getElementById('userInfo').style.display = 'none';
+            }
+        });
+        
+        async function getRecommendations() {
+            const userId = document.getElementById('userSelect').value;
+            const model = document.getElementById('modelSelect').value;
+            const topK = parseInt(document.getElementById('topK').value);
+            const context = getContextValues();
+            
+            if (!userId) {
+                alert('Please select a user');
+                return;
+            }
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('comparisonResults').style.display = 'none';
+            
+            try {
+                const response = await fetch('/recommend', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: parseInt(userId),
+                        model: model,
+                        context: context,
+                        top_k: topK
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayRecommendations(data.recommendations, model, data.model_info);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        function displayRecommendations(recommendations, modelName, modelInfo) {
+            const container = document.getElementById('recommendationsList');
+            const badgeClass = `badge-${modelName.toLowerCase()}`;
+            const selectedCategory = document.getElementById('context_category')?.value;
+            if (selectedCategory) {
+                recommendations = recommendations.filter(r => r.category === selectedCategory);
+            }
+            
+            let html = `
+                <div class="model-badge ${badgeClass}">
+                    ${modelName}: ${modelInfo.name}
+                </div>
+            `;
+            
+            if (!recommendations.length) {
+                html += `
+                    <div class="alert alert-info">No recommendations found for the selected category.</div>
+                `;
+                container.innerHTML = html;
+                document.getElementById('results').style.display = 'block';
+                return;
+            }
+
+            recommendations.forEach((item, index) => {
+                const discountText = item.discount > 0 ? `<span class="discount-badge">${item.discount}% OFF</span>` : '';
+                const originalPriceText = item.discount > 0 ? `<s>$${item.original_price.toLocaleString()}</s>` : '';
+                
+                html += `
+                    <div class="item-card">
+                        <div class="d-flex align-items-center">
+                            <div class="item-rank me-3">${index + 1}</div>
+                            <div class="flex-grow-1">
+                                <h5 class="mb-1">${item.full_name}</h5>
+                                <p class="mb-1 text-muted">
+                                    <i class="fas fa-tshirt"></i> ${item.category} | 
+                                    <i class="fas fa-store"></i> ${item.brand} | 
+                                    <i class="fas fa-star"></i> ${item.rating.toFixed(1)} (${item.rating_count} reviews)
+                                </p>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="price-badge">$${item.price.toLocaleString()}</span>
+                                    ${originalPriceText}
+                                    ${discountText}
+                                    <span class="badge bg-secondary">${item.price_range}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="rating-badge">
+                                    <i class="fas fa-heart"></i> ${item.predicted_rating.toFixed(3)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            document.getElementById('results').style.display = 'block';
+        }
+        
+        async function compareModels() {
+            const userId = document.getElementById('userSelect').value;
+            const topK = parseInt(document.getElementById('topK').value);
+            const context = getContextValues();
+            
+            if (!userId) {
+                alert('Please select a user');
+                return;
+            }
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('comparisonResults').style.display = 'none';
+            
+            try {
+                const response = await fetch('/compare', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: parseInt(userId),
+                        context: context,
+                        top_k: topK
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayComparison(data.results);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        function displayComparison(results) {
+            const container = document.getElementById('comparisonGrid');
+            let html = '';
+            const selectedCategory = document.getElementById('context_category')?.value;
+            
+            const models = ['ENCM', 'NeuMF', 'LNCM', 'BMF'];
+            
+            models.forEach(modelName => {
+                if (results[modelName]) {
+                    const badgeClass = `badge-${modelName.toLowerCase()}`;
+                    let recommendations = results[modelName];
+                    if (selectedCategory) {
+                        recommendations = recommendations.filter(r => r.category === selectedCategory);
+                    }
+                    
+                    html += `
+                        <div class="model-results">
+                            <div class="model-badge ${badgeClass} mb-3">${modelName}</div>
+                            ${recommendations.slice(0, 5).map((item, index) => `
+                                <div class="mb-2">
+                                    <small class="text-muted">#${index + 1}</small>
+                                    <strong>${item.name}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="fas fa-tshirt"></i> ${item.category} | 
+                                        <i class="fas fa-dollar-sign"></i> $${item.price.toLocaleString()}
+                                    </small>
+                                    <span class="badge bg-warning text-dark ms-2">${item.predicted_rating.toFixed(3)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+            });
+            
+            container.innerHTML = html;
+            document.getElementById('comparisonResults').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

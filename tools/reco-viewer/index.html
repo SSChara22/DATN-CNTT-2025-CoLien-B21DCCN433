@@ -1,11 +1,10 @@
 
-Bạn đã nói:
 <!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Recommendation Viewer (Standalone)</title>
+  <title>Recommendation Viewer</title>
   <style>
     :root { color-scheme: light dark; }
     html, body { height: 100%; }
@@ -13,29 +12,30 @@ Bạn đã nói:
     h1 { margin: 0 0 6px 0; }
     .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; max-width: 1600px; width: 100%; background: #fff; margin: 0 auto; }
     label { display: block; font-size: 14px; color: #555; margin-bottom: 4px; }
-    input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
+    input { width: 200%; max-width: 1350px; padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
     button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; background: #0ea5e9; color: #fff; font-weight: 600; }
     button.secondary { background: #64748b; }
-    #result { margin-top: 18px; height: calc(100vh - 220px); width: 100%; border: 1px solid #ddd; border-radius: 8px; }
-    .tip { font-size: 12px; color: #666; }
+    #dashboardContent { margin-top: 18px; }
+    .tip { font-size: 12px; color: #ddd; }
     .error { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 8px; }
+    .context-section { margin-top: 16px; padding: 12px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .context-section h3 { margin: 0 0 12px 0; font-size: 16px; color: #0f172a; }
+    .context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .context-item { padding: 8px 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
+    .context-label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+    .context-value { font-size: 14px; font-weight: 600; color: #0f172a; }
+    .context-badge { display: inline-block; padding: 4px 8px; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-size: 12px; font-weight: 500; }
   </style>
 </head>
 <body>
   <h1>Recommendation Viewer</h1>
   <p class="tip">Trang độc lập: nhập Base URL và Token để xem trang kết quả mô hình cho user hiện tại.</p>
   <div class="card">
-    <div class="row">
-      <div>
-        <label for="baseUrl">Base URL (vd: http://localhost:8003)</label>
-        <input id="baseUrl" placeholder="http://localhost:8003" />
-      </div>
-      <div>
-        <label for="token">Authorization Token (Bearer)</label>
-        <input id="token" placeholder="Dán accessToken vào đây" />
-      </div>
+    <div>
+      <label for="token">Authorization Token (Bearer)</label>
+      <input id="token" placeholder="Dán accessToken vào đây (Base URL mặc định: http://localhost:8003)" />
     </div>
     <div class="actions">
       <button id="loadBtn">Tải trang kết quả</button>
@@ -43,47 +43,121 @@ Bạn đã nói:
       <button id="clearBtn" class="secondary">Xoá</button>
     </div>
     <p class="tip">Trang đích: <code>/internal/recommendations</code> (yêu cầu Authorization: Bearer &lt;token&gt;)</p>
-    <iframe id="result"></iframe>
+    
+
+    <div id="dashboardContent"></div>
     <div id="err" class="error" style="display:none; margin-top:8px;"></div>
   </div>
 
   <script>
-    const elBase = document.getElementById('baseUrl');
     const elToken = document.getElementById('token');
     const elLoad = document.getElementById('loadBtn');
     const elSave = document.getElementById('saveBtn');
     const elClear = document.getElementById('clearBtn');
-    const elResult = document.getElementById('result');
+    const elDashboardContent = document.getElementById('dashboardContent');
     const elErr = document.getElementById('err');
 
     // load persisted
     (function init(){
-      elBase.value = localStorage.getItem('reco.baseUrl') || 'http://localhost:8003';
       elToken.value = localStorage.getItem('reco.token') || '';
     })();
 
-    function forceLight(html){
-      try{
-        if(!html) return html;
-        const inject = `
-<style id="__force_light__">
-  :root{ color-scheme: light !important; }
-  html,body{ background:#ffffff !important; color:#0f172a !important; }
-  body, * { color:#0f172a !important; text-shadow:none !important; }
-  a, a * { color:#0f172a !important; }
-  table{ background:#ffffff !important; border-color:#e5e7eb !important; }
-  th, td{ background:#ffffff !important; color:#0f172a !important; border-color:#e5e7eb !important; }
-  .kpi{ background:#ffffff !important; border-color:#e5e7eb !important; }
-  .best{ background:#ecfeff !important; }
-</style>
-`;
-
-        if(html.includes('</head>')) return html.replace('</head>', inject + '</head>');
-        return inject + html;
-      }catch(_){ return html; }
+    function deriveContext(ts) {
+      const d = new Date(ts);
+      const hour = d.getHours();
+      const month = d.getMonth() + 1;
+      const dayOfWeek = d.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6 ? 1 : 0;
+      const season = month <= 2 || month === 12 ? "winter" : month <= 5 ? "spring" : month <= 8 ? "summer" : "autumn";
+      const timeOfDay = hour < 6 ? "night" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+      const dayNames = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+      const seasonNames = { winter: 'Đông', spring: 'Xuân', summer: 'Hè', autumn: 'Thu' };
+      const timeOfDayNames = { morning: 'Sáng', afternoon: 'Chiều', evening: 'Tối', night: 'Đêm' };
+      
+      return {
+        hour,
+        month,
+        day_of_week: dayOfWeek,
+        is_weekend: isWeekend,
+        season,
+        season_display: seasonNames[season] || season,
+        time_of_day: timeOfDay,
+        time_of_day_display: timeOfDayNames[timeOfDay] || timeOfDay,
+        day_name: dayNames[dayOfWeek],
+        date: d.toISOString().split('T')[0],
+        datetime: d.toLocaleString('vi-VN')
+      };
     }
 
-    async function fetchDashboard(baseUrl, token){
+    function parseUserIdFromHtml(html) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const kpiElements = doc.querySelectorAll('.kpi');
+        for (const el of kpiElements) {
+          const text = el.textContent || el.innerText || '';
+          // Try to find "User ID: <number>" pattern
+          const match = text.match(/User ID[:\s]+(\d+)/i);
+          if (match) return parseInt(match[1]);
+        }
+        // Fallback: try regex on raw HTML
+        const htmlMatch = html.match(/User ID[^<]*<strong[^>]*>(\d+)<\/strong>/i);
+        if (htmlMatch) return parseInt(htmlMatch[1]);
+        // Another fallback: look for User ID in any format
+        const anyMatch = html.match(/User ID[:\s]+(\d+)/i);
+        if (anyMatch) return parseInt(anyMatch[1]);
+      } catch (e) {
+        console.warn('Could not parse user ID:', e);
+      }
+      return null;
+    }
+
+
+    function extractAndStyleContent(html){
+      try{
+        if(!html) return '';
+
+        // Parse HTML to extract body content
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const bodyContent = doc.body.innerHTML;
+
+        // Create styled content with dashboard-specific styles
+        const styledContent = `
+<div style="
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: #0f172a;
+  background: #ffffff;
+  line-height: 1.5;
+  margin: 0;
+">
+  <style>
+    .container { max-width: 1280px !important; margin: 0 auto !important; padding: 0 16px !important; }
+    #dashboardContent h1 { margin: 24px 0 8px 0 !important; color: #0f172a !important; font-size: 24px !important; border-bottom: 2px solid #e5e7eb !important; padding-bottom: 8px !important; }
+    .kpis { display: flex !important; gap: 12px !important; margin: 8px 0 16px !important; flex-wrap: wrap !important; }
+    .kpi { padding: 10px 12px !important; border: 1px solid #e5e7eb !important; border-radius: 8px !important; background:#ffffff !important; color:#0f172a !important; }
+    .section { margin-top: 32px !important; }
+    table { border-collapse: collapse !important; width: 100% !important; background:#ffffff !important; color:#0f172a !important; margin-bottom: 20px !important; }
+    th, td { border: 1px solid #e5e7eb !important; padding: 8px !important; color:#0f172a !important; }
+    th { background: #f8fafc !important; text-align: left !important; color:#0f172a !important; font-weight: 600 !important; }
+    code { background: #f1f5f9 !important; padding: 2px 4px !important; border-radius: 4px !important; color:#0f172a !important; font-family: 'Monaco', 'Menlo', monospace !important; }
+    .best { background: #ecfeff !important; }
+    .tag { display:inline-block !important; font-size:12px !important; padding:2px 6px !important; border-radius:999px !important; background:#e2e8f0 !important; color:#0f172a !important; }
+    h2 { margin: 24px 0 12px 0 !important; color: #0f172a !important; font-size: 20px !important; border-bottom: 2px solid #e5e7eb !important; padding-bottom: 8px !important; }
+    p { margin: 8px 0 !important; }
+  </style>
+  ${bodyContent}
+</div>`;
+
+        return styledContent;
+      }catch(e){
+        console.error('Error processing HTML:', e);
+        return html;
+      }
+    }
+
+    async function fetchDashboard(token){
+      const baseUrl = 'http://localhost:8003'; // Fixed base URL
       const url = baseUrl.replace(/\/$/, '') + '/internal/recommendations';
       const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
       if(!res.ok){
@@ -91,35 +165,38 @@ Bạn đã nói:
         throw new Error('HTTP ' + res.status + ': ' + text);
       }
       const txt = await res.text();
-      return forceLight(txt);
+      return txt;
     }
 
     elLoad.addEventListener('click', async ()=>{
-      const base = elBase.value.trim();
       const token = elToken.value.trim();
-      if(!base || !token){ alert('Vui lòng nhập Base URL và Token'); return; }
-      elResult.srcdoc = '<p style="padding:12px">Đang tải...</p>';
+      if(!token){ alert('Vui lòng nhập Token'); return; }
+      elDashboardContent.innerHTML = '<p style="padding:20px; text-align:center;">Đang tải...</p>';
+      elErr.style.display = 'none';
       try{
-        const html = await fetchDashboard(base, token);
-        elResult.srcdoc = html;
+        const html = await fetchDashboard(token);
+
+        // Parse user ID
+        const userId = parseUserIdFromHtml(html);
+
+        // Extract and style the dashboard content
+        const styledContent = extractAndStyleContent(html);
+        elDashboardContent.innerHTML = styledContent;
         elErr.style.display = 'none';
       }catch(err){
-        elResult.srcdoc = '';
+        elDashboardContent.innerHTML = '';
         elErr.style.display = 'block';
         elErr.textContent = (err?.message || err);
       }
     });
 
     elSave.addEventListener('click', ()=>{
-      localStorage.setItem('reco.baseUrl', elBase.value.trim());
       localStorage.setItem('reco.token', elToken.value.trim());
       alert('Đã lưu');
     });
 
     elClear.addEventListener('click', ()=>{
-      localStorage.removeItem('reco.baseUrl');
       localStorage.removeItem('reco.token');
-      elBase.value = '';
       elToken.value = '';
     });
   </script>

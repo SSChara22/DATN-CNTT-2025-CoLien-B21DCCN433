@@ -192,7 +192,7 @@ let handleLogin = (data) => {
 
                             userData.user = user;
                             userData.accessToken = CommonUtils.encodeToken(user.id)
-                            try { await recommendationService.initForUser(user.id, 5); } catch (e) {}
+                            try { await recommendationService.initForUser(user.id, 10); } catch (e) {}
                         } else {
                             userData.errCode = 3;
 
