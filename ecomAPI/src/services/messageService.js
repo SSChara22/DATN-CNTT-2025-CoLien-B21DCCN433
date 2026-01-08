@@ -29,7 +29,17 @@ let createNewRoom = (data) => {
                                 errCode: 0,
                                 errMessage: 'ok'
                             })
+                        } else {
+                            resolve({
+                                errCode: -1,
+                                errMessage: 'Failed to create room'
+                            })
                         }
+                    } else {
+                        resolve({
+                            errCode: 3,
+                            errMessage: 'Admin user not found. Please create user with email: chat@gmail.com'
+                        })
                     }
                 }
                

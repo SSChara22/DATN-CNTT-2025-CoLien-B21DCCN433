@@ -21,8 +21,12 @@ function MessagePage(props) {
             let res = await createNewRoom({
                 userId1: userData.id,
             });
-            if (res && res.errCode) {
+            // Fetch list room cả khi đã có phòng (errCode === 2) hoặc tạo thành công (errCode === 0)
+            if (res && (res.errCode === 0 || res.errCode === 2)) {
                 fetchListRoom(userData.id);
+            } else if (res && res.errCode === 3) {
+                console.error("Admin user not found. Please create user with email: chat@gmail.com");
+                alert("Hệ thống chat chưa sẵn sàng. Vui lòng liên hệ admin.");
             }
         };
         if (userData) {

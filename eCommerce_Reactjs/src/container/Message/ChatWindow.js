@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import socketIOClient from "socket.io-client";
-import { loadMessage } from "../../services/userService";
+import { loadMessage, sendMessage as sendMessageAPI } from "../../services/userService";
 import moment from "moment";
 
 const host = process.env.REACT_APP_BACKEND_URL;
@@ -43,22 +43,32 @@ function ChatWindow(props) {
             setuserData(res.data.userData);
         }
     };
-    let sendMessage = () => {
-        if (message !== null) {
+    let sendMessage = async () => {
+        if (message && message.trim() !== "" && props.roomId && user && user.id) {
             const msg = {
-                text: message,
+                text: message.trim(),
                 userId: user.id,
                 roomId: props.roomId,
-                userData: userData,
             };
-            socketRef.current.emit("sendDataClient", msg);
-
-            /*Khi emit('sendDataClient') bên phía server sẽ nhận được sự kiện có tên 'sendDataClient' và handle như câu lệnh trong file index.js
-           socket.on("sendDataClient", function(data) { // Handle khi có sự kiện tên là sendDataClient từ phía client
-             socketIo.emit("sendDataServer", { data });// phát sự kiện  có tên sendDataServer cùng với dữ liệu tin nhắn từ phía server
-           })
-     */
-            setMessage("");
+            
+            try {
+                // Gọi API REST để lưu vào DB trước
+                const res = await sendMessageAPI(msg);
+                
+                if (res && res.errCode === 0) {
+                    // Sau khi lưu thành công, emit socket để real-time update
+                    socketRef.current.emit("sendDataClient", msg);
+                    setMessage("");
+                } else {
+                    console.error("Failed to send message:", res?.errMessage);
+                    alert("Không thể gửi tin nhắn: " + (res?.errMessage || "Lỗi không xác định"));
+                }
+            } catch (error) {
+                console.error("Error sending message:", error);
+                // Fallback: vẫn emit socket nếu API lỗi (socket handler sẽ cố lưu)
+                socketRef.current.emit("sendDataClient", msg);
+                setMessage("");
+            }
         }
     };
     return (

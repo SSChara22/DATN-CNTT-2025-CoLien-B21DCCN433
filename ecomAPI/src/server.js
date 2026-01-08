@@ -53,9 +53,17 @@ const socketIo = require("socket.io")(server, {
 socketIo.on("connection", (socket) => {
     console.log("New client connected" + socket.id);
 
-    socket.on("sendDataClient", function (data) {
-        sendMessage(data);
-        socketIo.emit("sendDataServer", { data });
+    socket.on("sendDataClient", async function (data) {
+        try {
+            // Lưu message vào DB trước khi broadcast
+            await sendMessage(data);
+            // Broadcast cho tất cả client
+            socketIo.emit("sendDataServer", { data });
+        } catch (error) {
+            console.error("Error saving message:", error);
+            // Vẫn broadcast để user biết có lỗi (có thể thêm error flag)
+            socketIo.emit("sendDataServer", { data, error: true });
+        }
     });
     socket.on("loadRoomClient", function (data) {
         socketIo.emit("loadRoomServer", { data });
