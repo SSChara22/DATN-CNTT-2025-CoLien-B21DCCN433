@@ -147,6 +147,11 @@ let initwebRoutes = (app) => {
     router.get('/api/loadMessage', middlewareControllers.verifyTokenUser, messageController.loadMessage)
     router.get('/api/listRoomOfUser', middlewareControllers.verifyTokenUser, messageController.listRoomOfUser)
     router.get('/api/listRoomOfAdmin', middlewareControllers.verifyTokenAdmin, messageController.listRoomOfAdmin)
+    // Shipper chat routes (mirror user chat, but with shipper auth)
+    router.post('/api/shipper/create-new-room', middlewareControllers.verifyTokenShipper, messageController.createNewRoom)
+    router.post('/api/shipper/sendMessage', middlewareControllers.verifyTokenShipper, messageController.sendMessage)
+    router.get('/api/shipper/loadMessage', middlewareControllers.verifyTokenShipper, messageController.loadMessage)
+    router.get('/api/shipper/listRoomOfShipper', middlewareControllers.verifyTokenShipper, messageController.listRoomOfUser)
     //==================API COMMENT============================//
     router.post('/api/create-new-comment', middlewareControllers.verifyTokenUser, commentController.createNewComment)
     router.post('/api/reply-comment', middlewareControllers.verifyTokenAdmin, commentController.ReplyComment)

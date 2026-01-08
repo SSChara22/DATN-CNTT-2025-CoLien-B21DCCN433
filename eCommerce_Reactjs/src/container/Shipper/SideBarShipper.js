@@ -24,6 +24,10 @@ const SideBarShipper = () => {
                             <div className="sb-nav-link-icon"><i className="fas fa-shipping-fast" /></div>
                             Quản lý đơn hàng
                         </Link>
+                        <Link to="/shipper/chat" className="nav-link">
+                            <div className="sb-nav-link-icon"><i className="fas fa-comments" /></div>
+                            Chat với Admin
+                        </Link>
                     </div>
                 </div>
                 <div className="sb-sidenav-footer">

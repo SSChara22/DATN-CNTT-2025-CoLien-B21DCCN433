@@ -371,6 +371,19 @@ const listRoomOfAdmin = () => {
     return axios.get(`/api/listRoomOfAdmin`)
 
 }
+//======================SHIPPER CHAT======================//
+const createNewRoomShipper = (data) => {
+    return axios.post(`/api/shipper/create-new-room`, data)
+}
+const sendMessageShipper = (data) => {
+    return axios.post(`/api/shipper/sendMessage`, data)
+}
+const loadMessageShipper = (roomId, userId) => {
+    return axios.get(`/api/shipper/loadMessage?roomId=${roomId}&userId=${userId}`)
+}
+const listRoomOfShipper = (userId) => {
+    return axios.get(`/api/shipper/listRoomOfShipper?userId=${userId}`)
+}
 //========================COMMENT=======================
 const createNewcommentService = (data) => {
     return axios.post(`/api/create-new-comment`, data)
@@ -469,6 +482,8 @@ export {
     getAllShopCartByUserIdService, deleteItemShopCartService, createNewOrderService, createNewAddressUserrService, getAllAddressUserByUserIdService,
     deleteAddressUserService, editAddressUserService, getDetailAddressUserByIdService, getAllOrder, getDetailOrder, updateStatusOrderService,
     getAllOrdersByUser, getAllOrdersByShipper, paymentOrderService, paymentOrderSuccessService, createNewRoom, sendMessage, loadMessage, listRoomOfUser, listRoomOfAdmin, getAllCategoryBlogService,
+    // Shipper chat services
+    createNewRoomShipper, sendMessageShipper, loadMessageShipper, listRoomOfShipper,
     createNewcommentService, getAllcommentByBlogIdService, ReplycommentService, deletecommentService, getFeatureBlog, getNewBlog, getCountCardStatistic, getCountStatusOrder,
     getStatisticByMonth, getStatisticByDay, checkPhonenumberEmail, createNewSupplierService, updateSupplierService, deleteSupplierService, getDetailSupplierByIdService,
     getAllSupplier, createNewReceiptService, getAllReceipt, getDetailReceiptByIdService, deleteReceiptService, updateReceiptService, createNewReceiptDetailService,

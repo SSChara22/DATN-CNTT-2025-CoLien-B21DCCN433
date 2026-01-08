@@ -130,25 +130,25 @@ function ChatWindow(props) {
                 data-reduce-height=".ks-footer"
                 data-fix-height={32}
                 style={{
-                    height: "480px",
+                    height: "60vh",
                     overflow: "hidden",
                     padding: "0px",
-                    width: "701px",
+                    width: "100%",
                 }}
                 tabIndex={0}
             >
                 <div
                     className="jspContainer"
-                    style={{ width: "701px", height: "481px" }}
+                    style={{ width: "100%", height: "60vh" }}
                 >
                     <div
                         className="jspPane"
-                        style={{ padding: "0px", top: "0px", width: "691px" }}
+                        style={{ padding: "0px", top: "0px", width: "100%" }}
                     >
                         <ul
                             id="box-chat"
                             className="ks-items"
-                            style={{ overflowY: "scroll", maxHeight: "479px" }}
+                            style={{ overflowY: "scroll", maxHeight: "58vh" }}
                         >
                             {mess &&
                                 mess.length > 0 &&

@@ -1,7 +1,7 @@
 import React from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-const Header = () => {
+const Header = (props) => {
     const [user, setUser] = useState({});
     let handleLogout = () => {
         localStorage.removeItem("userData");
@@ -23,7 +23,8 @@ const Header = () => {
             <button
                 className="btn btn-link btn-sm order-1 order-lg-0 me-4 me-lg-0"
                 id="sidebarToggle"
-                href="#!"
+                type="button"
+                onClick={props && props.onToggle ? props.onToggle : undefined}
             >
                 <i className="fas fa-bars" />
             </button>

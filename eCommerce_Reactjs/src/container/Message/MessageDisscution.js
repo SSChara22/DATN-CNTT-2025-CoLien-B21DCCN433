@@ -60,9 +60,9 @@ handleSearchRoom(roomList)
             </span>
           </div>
         </div>
-        <div className="ks-body ks-scrollable jspScrollable" data-auto-height style={{height: '400px', overflowY: 'auto', padding: '0px', width: '339px'}} tabIndex={0}>
-          <div className="jspContainer" style={{width: '339px', height: '550px'}}>
-            <div className="jspPane" style={{padding: '0px', top: '0px', width: '329px'}}>
+        <div className="ks-body ks-scrollable jspScrollable" data-auto-height style={{maxHeight: '70vh', overflowY: 'auto', padding: '0px', width: '100%'}} tabIndex={0}>
+          <div className="jspContainer" style={{width: '100%', height: 'auto'}}>
+            <div className="jspPane" style={{padding: '0px', top: '0px', width: '100%'}}>
               <ul className="ks-items">
               
                 
@@ -77,17 +77,23 @@ handleSearchRoom(roomList)
                 });
                 return(
                   <li onClick={() => handleClickRoom(item.id)} key={index} className="ks-item">
-                  <a href="#">
+                  <a href="#" style={{ display:'flex', alignItems:'center', gap:'10px', width:'100%' }}>
                     <span className="ks-avatar">
                       <img src={userData.image} width={36} height={36} />
                       <span className="badge badge-pill badge-danger ks-badge ks-notify">{count && count > 0 ? count : ''}</span>
                     </span>
-                    <div className="ks-body">
-                      <div className="ks-name">
-                        {userData.firstName +" "+userData.lastName}
-                        <span className="ks-datetime">{item.messageData && item.messageData.length > 0 ? moment(item.messageData[item.messageData.length-1].createdAt).fromNow():''}</span>
+                    <div className="ks-body" style={{ minWidth:0, flex:1 }}>
+                      <div className="ks-name" style={{ display:'flex', justifyContent:'space-between', gap:'8px' }}>
+                        <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {userData.firstName +" "+userData.lastName}
+                        </span>
+                        <span className="ks-datetime" style={{ whiteSpace:'nowrap', flexShrink:0 }}>
+                          {item.messageData && item.messageData.length > 0 ? moment(item.messageData[item.messageData.length-1].createdAt).fromNow():''}
+                        </span>
                       </div>
-                      <div className="ks-message">{item.messageData && item.messageData.length > 0 ? item.messageData[item.messageData.length-1].text :'Chưa có tin nhắn'}</div>
+                      <div className="ks-message" style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {item.messageData && item.messageData.length > 0 ? item.messageData[item.messageData.length-1].text :'Chưa có tin nhắn'}
+                      </div>
                     </div>
                   </a>
                 </li>

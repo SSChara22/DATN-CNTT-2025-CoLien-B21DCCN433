@@ -5,6 +5,7 @@ import Header from "../System/Header";
 import SideBarShipper from "./SideBarShipper";
 import ManageShipperOrder from "./ManageShipperOrder";
 import DetailShipperOrder from "./DetailShipperOrder";
+import ShipperMessagePage from "./ShipperMessagePage";
 
 // Common Layout for Shipper
 const ShipperLayout = ({ children }) => {
@@ -30,6 +31,7 @@ function HomePageShipper() {
             <Routes>
                 <Route path="/" element={<ManageShipperOrder />} />
                 <Route path="/order-detail/:id" element={<DetailShipperOrder />} />
+                <Route path="/chat" element={<ShipperMessagePage />} />
             </Routes>
         </ShipperLayout>
     );
