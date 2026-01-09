@@ -125,7 +125,7 @@ let initwebRoutes = (app) => {
     router.get('/api/get-all-order', orderController.getAllOrders)
     router.get('/api/get-detail-order', orderController.getDetailOrderById)
     router.put('/api/update-status-order', middlewareControllers.verifyTokenUser, orderController.updateStatusOrder)
-    router.put('/api/update-status-order-shipper', middlewareControllers.verifyTokenShipper, orderController.updateStatusOrder)
+    router.put('/api/update-status-order-shipper', middlewareControllers.verifyTokenShipper, orderController.updateStatusOrderShipper)
     router.get('/api/get-all-order-by-user', middlewareControllers.verifyTokenUser, orderController.getAllOrdersByUser)
     router.post('/api/payment-order', middlewareControllers.verifyTokenUser, orderController.paymentOrder)
     router.post('/api/payment-order-success', middlewareControllers.verifyTokenUser, orderController.paymentOrderSuccess)

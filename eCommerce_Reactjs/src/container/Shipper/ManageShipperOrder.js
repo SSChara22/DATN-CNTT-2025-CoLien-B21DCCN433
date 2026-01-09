@@ -2,7 +2,7 @@ import React from "react";
 import { useEffect, useState } from "react";
 import {
   getAllOrdersByShipper,
-  updateStatusOrderService,
+  updateStatusOrderShipperService,
 } from "../../services/userService";
 import moment from "moment";
 import { toast } from "react-toastify";
@@ -54,7 +54,7 @@ const ManageShipperOrder = () => {
 
   let handleConfirmOrder = async (orderId) => {
     try {
-      let res = await updateStatusOrderService({
+      let res = await updateStatusOrderShipperService({
         id: orderId,
         statusId: "S5", // Đang giao hàng
         shipperId: user.id, // Gán shipper vào đơn hàng
@@ -213,14 +213,7 @@ const ManageShipperOrder = () => {
                                   Bắt đầu giao hàng
                                 </button>
                               )}
-                            {item.statusOrderData?.code === "S5" && (
-                              <Link
-                                to={`/shipper/order-detail/${item.id}`}
-                                className="btn btn-sm btn-success"
-                              >
-                                Hoàn thành giao hàng
-                              </Link>
-                            )}
+                            
                           </div>
                         </td>
                       </tr>
@@ -291,15 +284,7 @@ const ManageShipperOrder = () => {
                           Nhận đơn
                         </button>
                       )}
-
-                    {item.statusOrderData?.code === "S5" && (
-                      <Link
-                        to={`/shipper/order-detail/${item.id}`}
-                        className="btn btn-sm btn-success"
-                      >
-                        Hoàn thành
-                      </Link>
-                    )}
+                    
                   </div>
                 </div>
               </div>

@@ -81,6 +81,40 @@ let createNewOrder = (data) => {
     }
   });
 };
+let updateStatusOrderShipper = (data) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!data.id || !data.statusId) {
+        resolve({ errCode: 1, errMessage: "Missing required parameter !" });
+        return;
+      }
+      // Block shipper from marking delivered
+      if (data.statusId === "S6") {
+        resolve({ errCode: 2, errMessage: "Shipper cannot finalize delivery. Admin confirmation required." });
+        return;
+      }
+      let order = await db.OrderProduct.findOne({ where: { id: data.id }, raw: false });
+      if (!order) {
+        resolve({ errCode: 3, errMessage: "Order not found" });
+        return;
+      }
+      // Allow pickup/start delivery (S5) and assign shipper if provided
+      if (data.statusId === "S5") {
+        if (data.shipperId && !order.shipperId) {
+          order.shipperId = data.shipperId;
+        }
+        order.statusId = "S5";
+      } else {
+        // Allow other non-final statuses except S6
+        order.statusId = data.statusId;
+      }
+      await order.save();
+      resolve({ errCode: 0, errMessage: "ok" });
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
 let getAllOrders = (data) => {
   return new Promise(async (resolve, reject) => {
     try {
@@ -832,6 +866,7 @@ module.exports = {
   getAllOrders: getAllOrders,
   getDetailOrderById: getDetailOrderById,
   updateStatusOrder: updateStatusOrder,
+  updateStatusOrderShipper: updateStatusOrderShipper,
   getAllOrdersByUser: getAllOrdersByUser,
   paymentOrder: paymentOrder,
   paymentOrderSuccess: paymentOrderSuccess,

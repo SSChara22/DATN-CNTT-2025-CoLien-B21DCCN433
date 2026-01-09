@@ -48,6 +48,18 @@ let updateStatusOrder = async (req, res) => {
         })
     }
 }
+let updateStatusOrderShipper = async (req, res) => {
+    try {
+        let data = await orderService.updateStatusOrderShipper(req.body);
+        return res.status(200).json(data);
+    } catch (error) {
+        console.log(error)
+        return res.status(200).json({
+            errCode: -1,
+            errMessage: 'Error from server'
+        })
+    }
+}
 let getAllOrdersByUser = async (req, res) => {
     try {
         let data = await orderService.getAllOrdersByUser(req.query.userId);
@@ -161,6 +173,7 @@ module.exports = {
     getAllOrders: getAllOrders,
     getDetailOrderById: getDetailOrderById,
     updateStatusOrder: updateStatusOrder,
+    updateStatusOrderShipper: updateStatusOrderShipper,
     getAllOrdersByUser: getAllOrdersByUser,
     paymentOrder: paymentOrder,
     paymentOrderSuccess: paymentOrderSuccess,

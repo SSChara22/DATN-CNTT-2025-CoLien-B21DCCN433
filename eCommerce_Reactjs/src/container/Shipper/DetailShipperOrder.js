@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   getDetailOrder,
   updateStatusOrderService,
+  updateStatusOrderShipperService,
   updateImageOrderService,
 } from "../../services/userService";
 import { toast } from "react-toastify";
@@ -57,7 +58,7 @@ function DetailShipperOrder() {
   };
 
   let handleConfirmOrder = async () => {
-    let res = await updateStatusOrderService({
+    let res = await updateStatusOrderShipperService({
       id: DataOrder.id,
       statusId: "S5", // Đang giao hàng
       shipperId: user?.id, // Gán shipper vào đơn hàng
@@ -79,35 +80,17 @@ function DetailShipperOrder() {
   };
 
   let handleCompleteOrder = async () => {
-    // ❌ Chưa có ảnh → không cho hoàn thành
     if (!image) {
       toast.error("Vui lòng upload ảnh xác nhận giao hàng");
       return;
     }
-
-    // 1️⃣ GỬI ẢNH LÊN BACKEND (API BẠN ĐÃ CÓ)
-    let resImage = await updateImageOrderService({
-      id: DataOrder.id,
-      image: image,
-    });
-
+    const resImage = await updateImageOrderService({ id: DataOrder.id, image });
     if (!resImage || resImage.errCode !== 0) {
       toast.error("Upload ảnh giao hàng thất bại");
       return;
     }
-
-    // 2️⃣ CẬP NHẬT TRẠNG THÁI S6
-    let resStatus = await updateStatusOrderService({
-      id: DataOrder.id,
-      statusId: "S6",
-    });
-
-    if (resStatus && resStatus.errCode === 0) {
-      toast.success("Xác nhận giao hàng thành công");
-      navigate("/shipper");
-    } else {
-      toast.error(resStatus?.errMessage || "Có lỗi xảy ra");
-    }
+    toast.success("Đã gửi bằng chứng giao hàng. Chờ admin xác nhận hoàn tất.");
+    navigate("/shipper");
   };
 
   return (
@@ -267,7 +250,7 @@ function DetailShipperOrder() {
       </div>
 
       <div className="card mb-4">
-        {DataOrder.statusOrderData?.code === "S5" && (
+        {DataOrder.statusOrderData?.code === "S5" && !DataOrder.image && (
           <div className="mb-3">
             <label className="form-label text-danger">
               Ảnh xác nhận giao hàng (bắt buộc)
@@ -305,7 +288,8 @@ function DetailShipperOrder() {
               )}
 
             {DataOrder.statusOrderData?.code === "S5" &&
-              DataOrder.shipperId === user?.id && (
+              DataOrder.shipperId === user?.id &&
+              !DataOrder.image && (
                 <button
                   className="btn btn-success"
                   onClick={handleCompleteOrder}

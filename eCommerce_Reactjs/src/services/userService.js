@@ -302,6 +302,9 @@ const getDetailOrder = (id) => {
 const updateStatusOrderService = (data) => {
     return axios.put(`/api/update-status-order`, data)
 }
+const updateStatusOrderShipperService = (data) => {
+    return axios.put(`/api/update-status-order-shipper`, data)
+}
 const updateImageOrderService = (data) => {
     return axios.put('/api/update-image-order', data);
 };
@@ -480,7 +483,7 @@ export {
     DeleteProductDetailSizeService, createNewReviewService, getAllReviewByProductIdService, ReplyReviewService, deleteReviewService,
     getProductFeatureService, getProductNewService, saveUserVoucherService, getAllVoucherByUserIdService, addShopCartService,
     getAllShopCartByUserIdService, deleteItemShopCartService, createNewOrderService, createNewAddressUserrService, getAllAddressUserByUserIdService,
-    deleteAddressUserService, editAddressUserService, getDetailAddressUserByIdService, getAllOrder, getDetailOrder, updateStatusOrderService,
+    deleteAddressUserService, editAddressUserService, getDetailAddressUserByIdService, getAllOrder, getDetailOrder, updateStatusOrderService, updateStatusOrderShipperService,
     getAllOrdersByUser, getAllOrdersByShipper, paymentOrderService, paymentOrderSuccessService, createNewRoom, sendMessage, loadMessage, listRoomOfUser, listRoomOfAdmin, getAllCategoryBlogService,
     // Shipper chat services
     createNewRoomShipper, sendMessageShipper, loadMessageShipper, listRoomOfShipper,
